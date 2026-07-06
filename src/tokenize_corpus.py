@@ -18,6 +18,8 @@ import numpy as np
 from datasets import load_dataset
 from tokenizers import Tokenizer
 
+from hf_auth import get_hf_token
+
 FLUSH_EVERY = 1_000_000  # accumulate this many tokens before writing to disk
 
 
@@ -28,6 +30,7 @@ def text_iterator(sample_bytes: int):
         name="sample-10BT",
         split="train",
         streaming=True,
+        token=get_hf_token(),
     )
     seen = 0
     for doc in ds:

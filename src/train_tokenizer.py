@@ -15,6 +15,8 @@ import os
 from datasets import load_dataset
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 
+from hf_auth import get_hf_token
+
 SPECIAL_TOKENS = ["<|endoftext|>", "<|pad|>", "<|im_start|>", "<|im_end|>"]
 
 
@@ -25,6 +27,7 @@ def text_iterator(sample_bytes: int):
         name="sample-10BT",
         split="train",
         streaming=True,
+        token=get_hf_token(),
     )
     seen = 0
     for doc in ds:
