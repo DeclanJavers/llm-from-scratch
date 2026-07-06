@@ -82,14 +82,18 @@ def main():
     ap.add_argument("--grad-clip", type=float, default=1.0)
     ap.add_argument("--grad-accum", type=int, default=1,
                     help="micro-batches to accumulate before a step (sim. bigger batch)")
-    ap.add_argument("--eval-interval", type=int, default=250)
-    ap.add_argument("--eval-iters", type=int, default=50)
+    ap.add_argument("--eval-interval", type=int, default=500)
+    ap.add_argument("--eval-iters", type=int, default=20)
     ap.add_argument("--out-dir", default="checkpoints")
     ap.add_argument("--device", default=None)
+    ap.add_argument("--compile", action="store_true",
+                    help="torch.compile the model (big speedup on CUDA; slow first step)")
     ap.add_argument("--seed", type=int, default=1337)
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    # let matmuls use TF32 tensor cores on Ampere/Ada GPUs (free speedup)
+    torch.set_float32_matmul_precision("high")
     device = args.device or pick_device()
     os.makedirs(args.out_dir, exist_ok=True)
     print(f"device: {device}")
@@ -107,6 +111,10 @@ def main():
     optimizer = configure_optimizer(
         model, lr=args.lr, weight_decay=args.weight_decay, betas=(0.9, 0.95)
     )
+
+    if args.compile:
+        print("compiling model (first step will be slow)...")
+        model = torch.compile(model)
 
     best_val = float("inf")
     t0 = time.time()

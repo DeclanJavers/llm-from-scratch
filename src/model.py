@@ -35,15 +35,8 @@ class CausalSelfAttention(nn.Module):
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd)
         # projection applied after mixing the heads back together.
         self.c_proj = nn.Linear(config.n_embd, config.n_embd)
-        self.attn_dropout = nn.Dropout(config.dropout)
         self.resid_dropout = nn.Dropout(config.dropout)
-        # causal mask: a lower-triangular matrix of 1s. Position t may look at
-        # columns 0..t only. Stored as a buffer (not a learnable parameter).
-        self.register_buffer(
-            "mask",
-            torch.tril(torch.ones(config.block_size, config.block_size))
-                 .view(1, 1, config.block_size, config.block_size),
-        )
+        self.dropout = config.dropout   # passed to the fused attention kernel
 
     def forward(self, x):
         B, T, C = x.shape                       # batch, seq len, n_embd
@@ -57,18 +50,16 @@ class CausalSelfAttention(nn.Module):
         k = k.view(B, T, self.n_head, head_dim).transpose(1, 2)
         v = v.view(B, T, self.n_head, head_dim).transpose(1, 2)
 
-        # 3) scores = query . key, scaled so softmax stays well-behaved
-        att = (q @ k.transpose(-2, -1)) / math.sqrt(head_dim)   # (B, nh, T, T)
+        # 3) fused scaled-dot-product attention (FlashAttention on CUDA).
+        #    is_causal=True applies the look-back-only mask internally, and it
+        #    never materializes the full T x T score matrix -> faster + less VRAM.
+        y = F.scaled_dot_product_attention(
+            q, k, v,
+            is_causal=True,
+            dropout_p=self.dropout if self.training else 0.0,
+        )
 
-        # 4) causal mask: blank out the future BEFORE softmax
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-
-        # 5) turn scores into weights that sum to 1, then average the values
-        att = F.softmax(att, dim=-1)
-        att = self.attn_dropout(att)
-        y = att @ v                             # (B, nh, T, head_dim)
-
-        # 6) reassemble the heads back into one vector per token
+        # 4) reassemble the heads back into one vector per token
         y = y.transpose(1, 2).contiguous().view(B, T, C)
         y = self.resid_dropout(self.c_proj(y))
         return y
