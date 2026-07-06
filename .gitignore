@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+data/*.bin
+data/*.json
+checkpoints/
+tokenizer/*.json
+.DS_Store

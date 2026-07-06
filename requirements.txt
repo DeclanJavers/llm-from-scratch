@@ -1,0 +1,6 @@
+torch>=2.4
+numpy
+datasets>=2.20
+tokenizers>=0.19
+huggingface_hub>=0.24
+tqdm
