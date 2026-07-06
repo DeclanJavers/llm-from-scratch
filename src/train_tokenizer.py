@@ -10,6 +10,7 @@ trains BPE, and writes tokenizer/tokenizer.json.
 """
 
 import argparse
+import os
 
 from datasets import load_dataset
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
@@ -64,6 +65,7 @@ def main():
     tok.train_from_iterator(
         text_iterator(int(args.sample_gb * 1e9)), trainer=trainer
     )
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     tok.save(args.out)
 
     # --- sanity block: a tokenizer that "runs" can still be silently wrong ---
