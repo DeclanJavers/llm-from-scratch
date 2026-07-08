@@ -111,6 +111,22 @@ unanswerable, SQuAD 2.0 validation, seed 0) is committed and byte-frozen:
 If that hash ever changes, every previously reported number is void.
 Grade predictions with `src/run_gate.py`; the checks live in `src/validator.py`.
 
+`data/eval/squad2_dev.jsonl` (2000 examples, seed 1, id-disjoint from the
+frozen set) is the **dev set**: validator development, V2 tuning, and the
+labeled validator bench all happen here. The frozen set is for reporting only.
+
+### Gate tooling
+
+- `src/gen_preds.py` — runs any model on an eval set via an OpenAI-compatible
+  server (LM Studio over the network). Extracts the first JSON object from
+  replies (adapter for instruct models); resumable.
+- `src/build_validator_bench.py` — builds the labeled set that scores the
+  validator itself: auto-labels clear cases from gold F1, `--review` gives an
+  interactive loop for the ambiguous band.
+- `src/v2_checks.py` — type-agreement (rule-based) and round-trip (model-based)
+  checks, scored as a classifier against the bench. The false-accept rate is
+  the number that caps the whole system's verified accuracy.
+
 ## Baselines (before any training)
 
 Benchmark on the gate: Qwen3-0.6B, Llama-3.2-1B, Gemma-3-1B, SmolLM3,

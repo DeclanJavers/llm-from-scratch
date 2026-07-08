@@ -33,6 +33,29 @@ python src/run_gate.py --baseline first_sentence
 python src/run_gate.py --preds preds/<model>.jsonl
 ```
 
+## Baselines via LM Studio
+
+Point `gen_preds.py` at an LM Studio server ("lms server start" on the other
+Mac, default port 1234) to make any model take the exam:
+
+```bash
+python src/gen_preds.py --base-url http://<mac>.local:1234/v1 --list-models
+
+# smoke test first (8 examples), then the full frozen run
+python src/gen_preds.py --base-url http://<mac>.local:1234/v1 \
+    --model qwen3-0.6b --limit 8 --out preds/smoke.jsonl
+python src/gen_preds.py --base-url http://<mac>.local:1234/v1 \
+    --model qwen3-0.6b --out preds/qwen3-0.6b.jsonl
+python src/run_gate.py --preds preds/qwen3-0.6b.jsonl
+```
+
+Validator development happens on the dev set (`data/eval/squad2_dev.jsonl`,
+id-disjoint from the frozen set): generate dev predictions with
+`--eval-set data/eval/squad2_dev.jsonl --out preds/dev/<model>.jsonl`, build
+the labeled bench with `src/build_validator_bench.py --preds preds/dev/*.jsonl`
+(then `--review` to hand-label the ambiguous band), and score the V2 checks
+with `src/v2_checks.py`. The frozen set is for reporting only.
+
 ## Training pipeline
 
 Mac (M5 Max) does prep and smoke tests; Google Colab does the real training

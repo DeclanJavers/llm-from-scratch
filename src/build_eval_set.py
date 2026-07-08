@@ -21,12 +21,22 @@ def main():
     ap.add_argument("--n-unanswerable", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="data/eval/squad2_frozen.jsonl")
+    ap.add_argument("--exclude", help="jsonl whose ids to keep out (build the dev set "
+                    "disjoint from the frozen set: --seed 1 --exclude data/eval/squad2_frozen.jsonl "
+                    "--out data/eval/squad2_dev.jsonl)")
     args = ap.parse_args()
+
+    excluded = set()
+    if args.exclude:
+        with open(args.exclude) as f:
+            excluded = {json.loads(line)["id"] for line in f}
 
     ds = load_dataset("rajpurkar/squad_v2", split="validation")
 
     answerable, unanswerable = [], []
     for ex in ds:
+        if ex["id"] in excluded:
+            continue
         row = {
             "id": ex["id"],
             "question": ex["question"],
