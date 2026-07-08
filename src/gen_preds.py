@@ -13,6 +13,7 @@ Resumable: reruns skip ids already present in the output file.
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.request
 
@@ -43,11 +44,17 @@ def chat(base_url, model, question, document, temperature, max_tokens):
         "temperature": temperature,
         "max_tokens": max_tokens,
     })
-    return out["choices"][0]["message"]["content"]
+    msg = out["choices"][0]["message"]
+    # reasoning models: LM Studio may split thinking into its own field and
+    # leave content empty (e.g. truncated mid-think) — keep whatever exists
+    return msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
 
 def extract_json(text):
     """Pull the first JSON object out of a reply (instruct models add prose and
     fences; the gate itself stays strict — this is the adapter for foreign models)."""
+    # drop <think>...</think> blocks so we don't grab JSON the model merely
+    # mused about; an unclosed <think> means truncated thinking — nothing usable
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     decoder = json.JSONDecoder()
     for i, ch in enumerate(text):
         if ch == "{":
@@ -67,7 +74,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--limit", type=int, help="only run the first N examples (smoke test)")
     ap.add_argument("--temperature", type=float, default=0.0)
-    ap.add_argument("--max-tokens", type=int, default=512)
+    ap.add_argument("--max-tokens", type=int, default=4096,
+                    help="generous by default: reasoning models spend most of it thinking")
     args = ap.parse_args()
 
     if args.list_models:

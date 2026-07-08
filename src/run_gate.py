@@ -78,6 +78,9 @@ def main():
     ap.add_argument("--preds", help="predictions jsonl: {'id': ..., 'output': ...}")
     ap.add_argument("--baseline", choices=sorted(BASELINES))
     ap.add_argument("--report-out", help="also write the report as json")
+    ap.add_argument("--only-preds", action="store_true",
+                    help="grade only examples present in the preds file (smoke tests); "
+                    "full runs grade the whole eval set — missing predictions count as failures")
     args = ap.parse_args()
     if bool(args.preds) == bool(args.baseline):
         ap.error("exactly one of --preds / --baseline required")
@@ -89,6 +92,8 @@ def main():
     else:
         outputs = {p["id"]: p["output"] for p in load_jsonl(args.preds)}
         name = args.preds
+        if args.only_preds:
+            eval_rows = [ex for ex in eval_rows if ex["id"] in outputs]
 
     report = run(eval_rows, outputs, name)
     print(json.dumps(report, indent=2))
