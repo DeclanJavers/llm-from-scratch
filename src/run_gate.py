@@ -36,14 +36,22 @@ BASELINES = {"abstain": baseline_abstain, "first_sentence": baseline_first_sente
 
 # ------------------------------------------------------------- reporting
 
-def run(eval_rows, outputs, name):
+def run(eval_rows, outputs, name, show_fails=0):
     """outputs: dict id -> raw model output string. Missing id = graded as not_json."""
     results = []
+    shown = 0
     for ex in eval_rows:
         raw = outputs.get(ex["id"], "")
         r = grade(raw, ex["document"], ex["answers"])
         r["gold_answerable"] = len(ex["answers"]) > 0
         results.append(r)
+        if show_fails and shown < show_fails and r["v0_failure"] not in (None, "not_json"):
+            shown += 1
+            print(f"--- {r['v0_failure']}  ({ex['id']})")
+            print(f"Q:      {ex['question']}")
+            print(f"gold:   {ex['answers']}")
+            print(f"output: {raw[:400]}")
+            print()
 
     n = len(results)
     v0_pass = [r for r in results if r["v0_pass"]]
@@ -81,6 +89,8 @@ def main():
     ap.add_argument("--only-preds", action="store_true",
                     help="grade only examples present in the preds file (smoke tests); "
                     "full runs grade the whole eval set — missing predictions count as failures")
+    ap.add_argument("--show-fails", type=int, default=0, metavar="N",
+                    help="print the first N substantive V0 failures (question, gold, output)")
     args = ap.parse_args()
     if bool(args.preds) == bool(args.baseline):
         ap.error("exactly one of --preds / --baseline required")
@@ -95,7 +105,7 @@ def main():
         if args.only_preds:
             eval_rows = [ex for ex in eval_rows if ex["id"] in outputs]
 
-    report = run(eval_rows, outputs, name)
+    report = run(eval_rows, outputs, name, show_fails=args.show_fails)
     print(json.dumps(report, indent=2))
     if args.report_out:
         with open(args.report_out, "w") as f:

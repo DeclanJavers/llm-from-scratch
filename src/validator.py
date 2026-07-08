@@ -15,8 +15,18 @@ Expected model output, one JSON object and nothing else:
 import json
 import re
 import string
+import unicodedata
 
 # ---------------------------------------------------------------- V0 checks
+
+def canon(s):
+    """Canonical form for the containment checks: verbatim in *content*, but
+    forgiving of cosmetics (curly vs straight quotes, dash variants, whitespace
+    runs/newlines). Case is preserved — a quote is still a quote."""
+    s = unicodedata.normalize("NFKC", s)
+    s = s.translate(str.maketrans({"‘": "'", "’": "'", "“": '"',
+                                   "”": '"', "–": "-", "—": "-"}))
+    return " ".join(s.split())
 
 # every way an output can fail V0, worst first; a result carries exactly one
 V0_FAILURES = [
@@ -49,9 +59,9 @@ def v0_check(raw_output, document):
         return None, "bad_schema"
     if not ans.strip() or not ev.strip():
         return None, "empty_field"
-    if ev not in document:
+    if canon(ev) not in canon(document):
         return None, "ev_not_in_doc"
-    if ans not in ev:
+    if canon(ans) not in canon(ev):
         return None, "ans_not_in_ev"
     return parsed, None
 
@@ -131,4 +141,10 @@ if __name__ == "__main__":
         assert r["em"] == want_em, (raw, r)
     assert token_f1("the Nobel Prize", "Nobel Prize") == 1.0     # articles normalize away
     assert 0.0 < token_f1("Prize in Physics", "Nobel Prize") < 1.0
+    # canonical matching: cosmetic differences pass, content differences fail
+    doc2 = "She said “no comment” —\n and left."
+    ok, fail = v0_check('{"ok": true, "ans": "no comment", "ev": "said \\"no comment\\" - and left."}', doc2)
+    assert fail is None, fail
+    ok, fail = v0_check('{"ok": true, "ans": "no comment", "ev": "said no comment and stayed."}', doc2)
+    assert fail == "ev_not_in_doc"
     print("all validator self-tests pass")
