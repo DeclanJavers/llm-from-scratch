@@ -1,0 +1,20 @@
+{
+  "model": "preds/qwen3.5-2b.jsonl",
+  "n": 2000,
+  "v0_pass_rate": 0.9545,
+  "v0_failures": {
+    "ans_not_in_ev": 50,
+    "ev_not_in_doc": 22,
+    "not_json": 4,
+    "bad_schema": 15
+  },
+  "answerability_acc": 0.746,
+  "coverage": 0.523,
+  "selective_em": 0.5755258126195029,
+  "selective_f1": 0.6638618164854182,
+  "answerable_answered": 0.79,
+  "unanswerable_abstained": 0.702,
+  "f1_when_committed": 0.8789866582832246,
+  "overall_em": 0.652,
+  "overall_f1": 0.6981997300218737
+}
