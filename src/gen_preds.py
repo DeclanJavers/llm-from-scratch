@@ -36,7 +36,7 @@ def api(base_url, path, payload=None, timeout=300):
         return json.loads(resp.read())
 
 def chat(base_url, model, question, document, temperature, max_tokens, no_think=False,
-         timeout=600, retries=3):
+         timeout=600, retries=3, extra_body=None):
     # question -> document -> question repeated (see docs/DESIGN.md)
     user = f"Question: {question}\n\nDocument:\n{document}\n\nQuestion: {question}"
     system = SYSTEM_PROMPT + (" /no_think" if no_think else "")
@@ -46,6 +46,7 @@ def chat(base_url, model, question, document, temperature, max_tokens, no_think=
                      {"role": "user", "content": user}],
         "temperature": temperature,
         "max_tokens": max_tokens,
+        **(extra_body or {}),
     }
     # LM Studio serves one request at a time; a slow generation ahead of us in
     # the queue looks like a timeout here, so wait long and retry with backoff
@@ -100,6 +101,9 @@ def main():
     ap.add_argument("--no-think", action="store_true",
                     help="append the Qwen-style /no_think soft switch to the system prompt")
     ap.add_argument("--timeout", type=int, default=600, help="seconds per request")
+    ap.add_argument("--extra-body", type=json.loads, default={},
+                    help="JSON merged into every request body, e.g. "
+                    "'{\"chat_template_kwargs\": {\"enable_thinking\": false}}'")
     ap.add_argument("--re-extract", metavar="PREDS",
                     help="re-run extraction over an existing preds file's raw replies "
                     "(after an extractor fix) instead of generating anything")
@@ -143,7 +147,7 @@ def main():
             try:
                 raw = chat(args.base_url, args.model, ex["question"], ex["document"],
                            args.temperature, args.max_tokens, no_think=args.no_think,
-                           timeout=args.timeout)
+                           timeout=args.timeout, extra_body=args.extra_body)
             except Exception as e:   # keep going; rerun picks up the stragglers
                 print(f"\n{ex['id']}: {e}", file=sys.stderr)
                 continue
