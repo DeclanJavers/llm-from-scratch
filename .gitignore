@@ -1,7 +1,26 @@
-.venv/
 __pycache__/
+*.pyc
+.venv/
+venv/
+
+# tokenizer artifacts (train_tokenizer.py output)
+tokenizer/
+
+# tokenized corpus (tokenize_corpus.py output)
 data/*.bin
 data/*.json
+data/shards/
+
+# training checkpoints
 checkpoints/
-tokenizer/*.json
+
+# gate predictions (run_gate.py --preds input files)
+preds/
+
 .DS_Store
+*.ipynb_checkpoints
+
+# the frozen eval set must stay tracked (hash-pinned in docs/DESIGN.md) --
+# nothing above should match it, but pin it explicitly so it can't regress.
+!data/eval/
+!data/eval/**

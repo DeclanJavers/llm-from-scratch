@@ -1,38 +1,66 @@
 # tiny-lm
 
-Pretraining a ~200M parameter LLM from scratch. Mac (M5 Max) does all prep and
-smoke tests; Google Colab does the real training run.
+Pretraining a ~200M parameter LLM from scratch for **extractive open-note
+question answering**, built validator-first. The hypothesis: a small model
+paired with a robust validator (sample, check, resample, or abstain) can
+match a much larger model — target Qwen 3.5 8B — at a narrow, verifiable
+task, at a fraction of the inference cost.
 
-## Plan
+All design decisions (task definition, output schema, tokenizer, architecture,
+training plan, validator tiers) live in [docs/DESIGN.md](docs/DESIGN.md) and
+are authoritative. This README only covers what to run.
 
-1. **Tokenizer** (Mac) — train a 32,768-vocab byte-level BPE on a FineWeb-Edu
-   sample. Special tokens reserved up front: `<|endoftext|>`, `<|pad|>`,
-   `<|im_start|>`, `<|im_end|>` (the last two are for the SFT stage later).
-2. **Data** (Mac) — stream `HuggingFaceFW/fineweb-edu` `sample-10BT` (no local
-   parquet cache — disk is tight), tokenize to uint16 `.bin` shards of 100M
-   tokens each, upload shards to a HF Hub dataset repo as they finish.
-3. **Model + train code** (Mac) — nanoGPT-style GPT in plain PyTorch. Runs on
-   `mps` for smoke tests, `cuda` on Colab. Must resume cleanly from checkpoint
-   (Colab sessions die).
-4. **Pretrain** (Colab) — A100 preferred. Checkpoints to Google Drive every
-   ~25 min. Budget: 8–10B tokens ≈ ~25 A100-hours.
-5. **SFT** (Colab) — open-book QA + summarization mix (SQuAD 2.0, MS MARCO,
-   CNN/DailyMail, SAMSum, DialogSum). Joint training, task prefixes.
-6. **Eval** — held-out loss + ROUGE-L (summarization), EM/F1 (QA), and a
-   "says 'not stated' when it should" check.
+## Gate (build first)
 
-## Architecture target
+Nothing in training gets designed until the gate exists and baselines are
+measured. The gate lives in `src/validator.py` (the checks) and
+`src/run_gate.py` (the harness that grades predictions against it).
 
-GPT-2-style decoder-only, RoPE, ~200M class. Working numbers (finalized in
-`src/model.py`): 16 layers, d_model 1024, 16 heads, ctx 2048, tied embeddings,
-vocab 32,768 → ~235M params. Trim layers if we want to land closer to 200M.
+```bash
+# run the validator's self-tests
+python src/validator.py
+
+# rebuild the frozen eval set (data/eval/squad2_frozen.jsonl) -- this is
+# already committed and hash-pinned in docs/DESIGN.md, so don't regenerate
+# unless you know what you're doing; it will change the hash
+python src/build_eval_set.py
+
+# smoke-test the harness itself against built-in floor baselines
+python src/run_gate.py --baseline abstain
+python src/run_gate.py --baseline first_sentence
+
+# grade real predictions: one JSON line per example, {"id": ..., "output": ...}
+python src/run_gate.py --preds preds/<model>.jsonl
+```
+
+## Training pipeline
+
+Mac (M5 Max) does prep and smoke tests; Google Colab does the real training
+run.
+
+- `src/train_tokenizer.py` — trains a 32,768-vocab byte-level BPE on a
+  streamed FineWeb-Edu sample, writes `tokenizer/tokenizer.json`.
+- `src/tokenize_corpus.py` — streams FineWeb-Edu again, encodes with that
+  tokenizer, and writes `data/train.bin` / `data/val.bin` (uint16 token ids)
+  plus `data/meta.json`.
+- `src/data.py` — memory-maps the `.bin` shards and samples random windows
+  for training.
+- `src/model.py` — the GPT (decoder-only Transformer) definition.
+- `src/train.py` — the training loop; device-aware (CUDA on Colab, MPS on
+  Mac for smoke tests).
+- `src/generate.py` — autoregressive sampling from a checkpoint.
+
+**Architecture note:** the numbers currently in `src/model.py` (16 layers,
+d_model 1024) are the old plan. `docs/DESIGN.md` specifies the current
+target — deep-and-thin, ~24 layers x d_model 896, GQA (14 query / 2 KV
+heads), QK-norm — and `model.py` has not been updated to match yet.
 
 ## Setup
 
 ```bash
 uv venv && source .venv/bin/activate
 uv pip install -r requirements.txt
-huggingface-cli login   # needed for shard upload
+huggingface-cli login   # needed for dataset streaming / shard upload
 ```
 
 ## Usage
@@ -41,13 +69,17 @@ huggingface-cli login   # needed for shard upload
 # 1. Train tokenizer on ~2GB of streamed text (~20 min)
 python src/train_tokenizer.py
 
-# 2. Tokenize + shard + upload (streams, ~2-4 hrs, disk-light)
-python src/tokenize_shards.py --max-tokens 10e9 \
-    --hub-repo <you>/fineweb-edu-10b-tok32k --delete-after-upload
+# 2. Tokenize the corpus (streams, disk-light)
+python src/tokenize_corpus.py --sample-gb 2.0
+
+# 3. Local smoke test (Mac)
+python src/train.py --max-iters 20 --eval-interval 10 --eval-iters 5 --batch-size 4
+
+# 4. Real run (Colab GPU)
+python src/train.py --max-iters 6000 --batch-size 24 --block-size 256
 ```
 
 ## Disk note
 
-This Mac has ~20GB free. Everything streams; peak local disk usage with
-`--delete-after-upload` is a couple of shards (~400MB). Do not `load_dataset`
-without `streaming=True`.
+Everything streams; `--sample-gb` controls how much text is pulled before
+stopping. Do not `load_dataset` without `streaming=True`.
