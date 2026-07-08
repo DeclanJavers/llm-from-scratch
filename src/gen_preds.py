@@ -34,12 +34,13 @@ def api(base_url, path, payload=None, timeout=300):
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read())
 
-def chat(base_url, model, question, document, temperature, max_tokens):
+def chat(base_url, model, question, document, temperature, max_tokens, no_think=False):
     # question -> document -> question repeated (see docs/DESIGN.md)
     user = f"Question: {question}\n\nDocument:\n{document}\n\nQuestion: {question}"
+    system = SYSTEM_PROMPT + (" /no_think" if no_think else "")
     out = api(base_url, "/chat/completions", {
         "model": model,
-        "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+        "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -84,6 +85,8 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--max-tokens", type=int, default=4096,
                     help="generous by default: reasoning models spend most of it thinking")
+    ap.add_argument("--no-think", action="store_true",
+                    help="append the Qwen-style /no_think soft switch to the system prompt")
     ap.add_argument("--re-extract", metavar="PREDS",
                     help="re-run extraction over an existing preds file's raw replies "
                     "(after an extractor fix) instead of generating anything")
@@ -126,7 +129,7 @@ def main():
                 continue
             try:
                 raw = chat(args.base_url, args.model, ex["question"], ex["document"],
-                           args.temperature, args.max_tokens)
+                           args.temperature, args.max_tokens, no_think=args.no_think)
             except Exception as e:   # keep going; rerun picks up the stragglers
                 print(f"\n{ex['id']}: {e}", file=sys.stderr)
                 continue
