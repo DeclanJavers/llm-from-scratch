@@ -58,8 +58,8 @@ with `src/v2_checks.py`. The frozen set is for reporting only.
 
 ## Training pipeline
 
-Mac (M5 Max) does prep and smoke tests; Google Colab does the real training
-run.
+Mac (M5 Max) does prep and smoke tests; the real training run happens on a
+CUDA GPU.
 
 - `src/train_tokenizer.py` — trains a 32,768-vocab byte-level BPE on a
   streamed FineWeb-Edu sample, writes `tokenizer/tokenizer.json`.
@@ -69,7 +69,7 @@ run.
 - `src/data.py` — memory-maps the `.bin` shards and samples random windows
   for training.
 - `src/model.py` — the GPT (decoder-only Transformer) definition.
-- `src/train.py` — the training loop; device-aware (CUDA on Colab, MPS on
+- `src/train.py` — the training loop; device-aware (CUDA if present, MPS on
   Mac for smoke tests).
 - `src/generate.py` — autoregressive sampling from a checkpoint.
 
@@ -98,7 +98,7 @@ python src/tokenize_corpus.py --sample-gb 2.0
 # 3. Local smoke test (Mac)
 python src/train.py --max-iters 20 --eval-interval 10 --eval-iters 5 --batch-size 4
 
-# 4. Real run (Colab GPU)
+# 4. Real run (CUDA GPU)
 python src/train.py --max-iters 6000 --batch-size 24 --block-size 256
 ```
 
