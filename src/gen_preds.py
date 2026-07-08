@@ -50,24 +50,32 @@ def chat(base_url, model, question, document, temperature, max_tokens):
     return msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or ""
 
 def extract_json(text):
-    """Pull the first JSON object out of a reply (instruct models add prose and
-    fences; the gate itself stays strict — this is the adapter for foreign models)."""
-    # drop <think>...</think> blocks so we don't grab JSON the model merely
-    # mused about; an unclosed <think> means truncated thinking — nothing usable
+    """Pull the model's answer object out of a reply (instruct models add prose
+    and fences; the gate itself stays strict — this is the adapter for foreign
+    models). Reasoning models restate the format spec while thinking, so the
+    FIRST object is often the quoted template — the answer is the LAST
+    schema-shaped object in the reply."""
+    # drop <think>...</think> blocks; an unclosed <think> means truncated thinking
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
     decoder = json.JSONDecoder()
+    candidates = []
     for i, ch in enumerate(text):
         if ch == "{":
             try:
                 obj, _ = decoder.raw_decode(text[i:])
-                return json.dumps(obj, ensure_ascii=False)
             except json.JSONDecodeError:
                 continue
+            candidates.append(obj)
+    schema_shaped = [c for c in candidates if isinstance(c, dict) and "ok" in c]
+    if schema_shaped:
+        return json.dumps(schema_shaped[-1], ensure_ascii=False)
+    if candidates:
+        return json.dumps(candidates[-1], ensure_ascii=False)
     return text  # nothing parseable; the gate will grade it not_json
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base-url", required=True, help="e.g. http://mac.local:1234/v1")
+    ap.add_argument("--base-url", help="e.g. http://mac.local:1234/v1")
     ap.add_argument("--model")
     ap.add_argument("--list-models", action="store_true")
     ap.add_argument("--eval-set", default="data/eval/squad2_frozen.jsonl")
@@ -76,8 +84,23 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.0)
     ap.add_argument("--max-tokens", type=int, default=4096,
                     help="generous by default: reasoning models spend most of it thinking")
+    ap.add_argument("--re-extract", metavar="PREDS",
+                    help="re-run extraction over an existing preds file's raw replies "
+                    "(after an extractor fix) instead of generating anything")
     args = ap.parse_args()
 
+    if args.re_extract:
+        with open(args.re_extract) as f:
+            preds = [json.loads(line) for line in f]
+        with open(args.re_extract, "w") as f:
+            for p in preds:
+                p["output"] = extract_json(p["raw"])
+                f.write(json.dumps(p, ensure_ascii=False) + "\n")
+        print(f"re-extracted {len(preds)} -> {args.re_extract}")
+        return
+
+    if not args.base_url:
+        ap.error("--base-url required")
     if args.list_models:
         for m in api(args.base_url, "/models")["data"]:
             print(m["id"])

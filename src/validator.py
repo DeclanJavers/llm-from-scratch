@@ -57,6 +57,10 @@ def v0_check(raw_output, document):
     ans, ev = parsed["ans"], parsed["ev"]
     if not isinstance(ans, str) or not isinstance(ev, str):
         return None, "bad_schema"
+    # models frame quotes with literal "..." — trim the framing, keep the quote
+    ans = re.sub(r"^\s*(?:\.{3}|…)\s*|\s*(?:\.{3}|…)\s*$", "", ans)
+    ev = re.sub(r"^\s*(?:\.{3}|…)\s*|\s*(?:\.{3}|…)\s*$", "", ev)
+    parsed["ans"], parsed["ev"] = ans, ev
     if not ans.strip() or not ev.strip():
         return None, "empty_field"
     if canon(ev) not in canon(document):
