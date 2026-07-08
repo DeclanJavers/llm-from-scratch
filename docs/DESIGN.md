@@ -101,6 +101,16 @@ classifier. False-accepts (hallucination passes) are the metric that matters
 most. Keep a frozen held-out eval gate that is never trained against —
 Goodhart insurance.
 
+### Frozen gate artifact
+
+`data/eval/squad2_frozen.jsonl` (2000 examples: 1000 answerable + 1000
+unanswerable, SQuAD 2.0 validation, seed 0) is committed and byte-frozen:
+
+    sha256 b28e813dce00985de005784fc476cf47f0a8090bba847da18ca6a94e0a068527
+
+If that hash ever changes, every previously reported number is void.
+Grade predictions with `src/run_gate.py`; the checks live in `src/validator.py`.
+
 ## Baselines (before any training)
 
 Benchmark on the gate: Qwen3-0.6B, Llama-3.2-1B, Gemma-3-1B, SmolLM3,
