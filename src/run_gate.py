@@ -57,6 +57,10 @@ def run(eval_rows, outputs, name, show_fails=0):
     v0_pass = [r for r in results if r["v0_pass"]]
     answered = [r for r in v0_pass if r["answered"]]
     answered_and_answerable = [r for r in answered if r["gold_answerable"]]
+    answerable = [r for r in results if r["gold_answerable"]]
+    unanswerable = [r for r in results if not r["gold_answerable"]]
+    # an explicit {"ok": false}; a V0 failure is not an abstention
+    abstained_unanswerable = [r for r in unanswerable if r["v0_pass"] and not r["answered"]]
 
     v0_failures = {}
     for r in results:
@@ -74,6 +78,11 @@ def run(eval_rows, outputs, name, show_fails=0):
         "coverage": len(answered) / n,
         "selective_em": (sum(r["em"] for r in answered_and_answerable) / len(answered)) if answered else 0.0,
         "selective_f1": (sum(r["f1"] for r in answered_and_answerable) / len(answered)) if answered else 0.0,
+        # the two abstention behaviors, separated
+        "answerable_answered": (sum(r["answered"] for r in answerable) / len(answerable)) if answerable else None,
+        "unanswerable_abstained": (len(abstained_unanswerable) / len(unanswerable)) if unanswerable else None,
+        # pure answer quality where it committed on a real question
+        "f1_when_committed": (sum(r["f1"] for r in answered_and_answerable) / len(answered_and_answerable)) if answered_and_answerable else 0.0,
         # SQuAD-comparable overall scores (abstentions on answerables score 0)
         "overall_em": sum(r["em"] if r["gold_answerable"] else float(r["answerable_correct"]) for r in results) / n,
         "overall_f1": sum(r["f1"] if r["gold_answerable"] else float(r["answerable_correct"]) for r in results) / n,

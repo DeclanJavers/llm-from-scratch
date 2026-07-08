@@ -21,12 +21,12 @@ import unicodedata
 
 def canon(s):
     """Canonical form for the containment checks: verbatim in *content*, but
-    forgiving of cosmetics (curly vs straight quotes, dash variants, whitespace
-    runs/newlines). Case is preserved — a quote is still a quote."""
+    forgiving of cosmetics — curly vs straight quotes, dash variants, whitespace
+    runs/newlines, and case (models capitalize sentence-initial quote words)."""
     s = unicodedata.normalize("NFKC", s)
     s = s.translate(str.maketrans({"‘": "'", "’": "'", "“": '"',
                                    "”": '"', "–": "-", "—": "-"}))
-    return " ".join(s.split())
+    return " ".join(s.lower().split())
 
 # every way an output can fail V0, worst first; a result carries exactly one
 V0_FAILURES = [
@@ -151,4 +151,7 @@ if __name__ == "__main__":
     assert fail is None, fail
     ok, fail = v0_check('{"ok": true, "ans": "no comment", "ev": "said no comment and stayed."}', doc2)
     assert fail == "ev_not_in_doc"
+    doc3 = "went to the USC Trojans game."
+    ok, fail = v0_check('{"ok": true, "ans": "Trojans", "ev": "The USC Trojans game"}', doc3)
+    assert fail is None, fail   # sentence-initial capitalization is cosmetic
     print("all validator self-tests pass")
