@@ -1,7 +1,6 @@
 # tiny-lm
 
-Pretraining a ~200M parameter LLM from scratch. Mac (M5 Max) does all prep and
-smoke tests; Google Colab does the real training run.
+Pretraining a ~200M parameter LLM from scratch. 
 
 ## Plan
 
