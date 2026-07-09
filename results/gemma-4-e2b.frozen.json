@@ -1,0 +1,19 @@
+{
+  "model": "preds/gemma-4-e2b.jsonl",
+  "n": 2000,
+  "v0_pass_rate": 0.9725,
+  "v0_failures": {
+    "ans_not_in_ev": 25,
+    "ev_not_in_doc": 28,
+    "not_json": 2
+  },
+  "answerability_acc": 0.7855,
+  "coverage": 0.63,
+  "selective_em": 0.4738095238095238,
+  "selective_f1": 0.600034814207237,
+  "answerable_answered": 0.926,
+  "unanswerable_abstained": 0.645,
+  "f1_when_committed": 0.8164620582085516,
+  "overall_em": 0.621,
+  "overall_f1": 0.7005219329505594
+}
