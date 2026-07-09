@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import time
 
 from validator import token_f1, canon
 from gen_preds import api
@@ -57,15 +58,23 @@ Text: "{ev}"
 
 Does the text explicitly state the answer to the question? Being on the same topic is not enough — the specific answer must be present. Reply with exactly one word: YES or NO."""
 
-def checker_reply(base_url, model, prompt, cache, key, max_tokens=64):
+def checker_reply(base_url, model, prompt, cache, key, max_tokens=64, retries=3):
     if key in cache:
         return cache[key]["reply"]
-    out = api(base_url, "/chat/completions", {
+    payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.0,
         "max_tokens": max_tokens,
-    })
+    }
+    for attempt in range(retries + 1):
+        try:
+            out = api(base_url, "/chat/completions", payload, timeout=600)
+            break
+        except Exception:
+            if attempt == retries:
+                raise   # cache holds everything done so far; rerun resumes
+            time.sleep(2 ** (attempt + 1))
     reply = out["choices"][0]["message"]["content"].strip()
     entry = dict(zip(("probe", "checker", "row_model", "id"), key), reply=reply)
     cache[key] = entry
