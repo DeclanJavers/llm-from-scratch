@@ -1,25 +1,33 @@
 """V2 semantic checks: catch the failure V0 can't see — a real quote from the
 document that doesn't actually answer the question.
 
-Two checks:
-  * type agreement (rule-based, free): a "when" question should get a
-    date-shaped answer, "how many" a number, "who" a name. Unknown question
-    types pass by default — the check only votes when it's confident.
-  * round-trip (needs a model): show a model ONLY the evidence quote and the
-    question. If the evidence really contains the answer, the round-trip
-    reproduces it; if the quote is a plausible dodge, it won't.
+Three probes, combined with AND (an output must pass every enabled probe):
+  * type — rule-based, free: a "when" question should get a date-shaped
+    answer, "how many" a number, "who" a name. Only votes when confident.
+  * roundtrip — show a checker model ONLY the evidence quote and the
+    question; if the evidence really contains the answer, the round-trip
+    reproduces it.
+  * verify — ask the checker model directly: does this text contain the
+    answer to this question, YES or NO.
 
-Score them as classifiers against the labeled bench (see build_validator_bench.py):
-    python src/v2_checks.py --bench data/eval/validator_bench.jsonl \
+Score against the labeled bench (build_validator_bench.py):
+    python src/v2_checks.py --checks type,roundtrip,verify \
         --base-url http://mac.local:1234/v1 --model qwen3-0.6b
+Checker replies are cached (cache/v2_replies.jsonl) keyed by probe+checker+row,
+so re-scoring with different combinations or thresholds is free after one pass.
+Use a checker model DIFFERENT from the model that produced the bench rows where
+possible — a checker shares blind spots with itself (correlated errors).
+
 The number that matters is the false-accept rate: incorrect answers that pass.
-That rate caps the verified accuracy of the whole system.
+It caps the verified precision of the whole system. False rejects only cost
+coverage/resamples.
 """
 import argparse
 import json
+import os
 import re
 
-from validator import token_f1
+from validator import token_f1, canon
 from gen_preds import api
 
 MONTHS = r"january|february|march|april|may|june|july|august|september|october|november|december"
@@ -43,54 +51,128 @@ Text: {ev}
 
 Question: {question}"""
 
-def roundtrip_check(base_url, model, question, ans, ev, max_tokens=64):
-    """True = the evidence alone reproduces the answer."""
+VERIFY_PROMPT = """Question: {question}
+
+Text: "{ev}"
+
+Does the text explicitly state the answer to the question? Being on the same topic is not enough — the specific answer must be present. Reply with exactly one word: YES or NO."""
+
+def checker_reply(base_url, model, prompt, cache, key, max_tokens=64):
+    if key in cache:
+        return cache[key]["reply"]
     out = api(base_url, "/chat/completions", {
         "model": model,
-        "messages": [{"role": "user", "content": ROUNDTRIP_PROMPT.format(ev=ev, question=question)}],
+        "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.0,
         "max_tokens": max_tokens,
     })
     reply = out["choices"][0]["message"]["content"].strip()
+    entry = dict(zip(("probe", "checker", "row_model", "id"), key), reply=reply)
+    cache[key] = entry
+    with open(cache["__path__"], "a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return reply
+
+def roundtrip_accept(reply, ans):
     if "NO ANSWER" in reply.upper():
         return False
-    return token_f1(reply, ans) >= 0.5
+    return token_f1(reply, ans) >= 0.5 or canon(ans) in canon(reply) or canon(reply) in canon(ans)
+
+def verify_accept(reply):
+    return reply.strip().upper().startswith("YES")
+
+def load_cache(path):
+    cache = {"__path__": path}
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                e = json.loads(line)
+                cache[(e["probe"], e["checker"], e["row_model"], e["id"])] = e
+    return cache
+
+def confusion(rows, verdicts):
+    """verdicts: list of bool accept aligned with rows. Returns FAR/FRR."""
+    fa = sum(1 for r, v in zip(rows, verdicts) if v and r["label"] == "incorrect")
+    fr = sum(1 for r, v in zip(rows, verdicts) if not v and r["label"] == "correct")
+    n_inc = sum(1 for r in rows if r["label"] == "incorrect")
+    n_cor = len(rows) - n_inc
+    return {"far": fa / n_inc if n_inc else None, "frr": fr / n_cor if n_cor else None,
+            "n_incorrect": n_inc, "n_correct": n_cor}
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bench", default="data/eval/validator_bench.jsonl")
-    ap.add_argument("--base-url", help="omit to score the type check alone")
-    ap.add_argument("--model")
+    ap.add_argument("--checks", default="type,roundtrip",
+                    help="comma list from: type, roundtrip, verify")
+    ap.add_argument("--base-url", help="needed for roundtrip/verify")
+    ap.add_argument("--model", help="checker model id (prefer one that did NOT produce the bench rows)")
+    ap.add_argument("--cache", default="cache/v2_replies.jsonl")
+    ap.add_argument("--show-fa", type=int, default=0, metavar="N",
+                    help="print N false-accepts that passed every enabled probe")
     args = ap.parse_args()
+    checks = [c.strip() for c in args.checks.split(",") if c.strip()]
+    needs_model = {"roundtrip", "verify"} & set(checks)
+    if needs_model and not (args.base_url and args.model):
+        ap.error(f"--base-url and --model required for {sorted(needs_model)}")
 
     with open(args.bench) as f:
-        rows = [json.loads(line) for line in f if json.loads(line)["label"]]
+        rows = [json.loads(line) for line in f]
+    rows = [r for r in rows if r["label"]]
 
-    # confusion counts for the combined validator: accept = every check passes
-    fa = fr = ta = tr = 0
+    os.makedirs(os.path.dirname(args.cache) or ".", exist_ok=True)
+    cache = load_cache(args.cache)
+
+    per_probe = {}   # probe -> aligned list of bools
     for i, r in enumerate(rows):
         out = json.loads(r["output"])
-        accept = type_check(r["question"], out["ans"])
-        if accept and args.base_url:
-            accept = roundtrip_check(args.base_url, args.model, r["question"], out["ans"], out["ev"])
+        if "type" in checks:
+            per_probe.setdefault("type", []).append(type_check(r["question"], out["ans"]))
+        if "roundtrip" in checks:
+            key = ("roundtrip", args.model, r["model"], r["id"])
+            reply = checker_reply(args.base_url, args.model,
+                                  ROUNDTRIP_PROMPT.format(ev=out["ev"], question=r["question"]),
+                                  cache, key)
+            per_probe.setdefault("roundtrip", []).append(roundtrip_accept(reply, out["ans"]))
+        if "verify" in checks:
+            key = ("verify", args.model, r["model"], r["id"])
+            reply = checker_reply(args.base_url, args.model,
+                                  VERIFY_PROMPT.format(ev=out["ev"], question=r["question"]),
+                                  cache, key, max_tokens=8)
+            per_probe.setdefault("verify", []).append(verify_accept(reply))
+        if needs_model:
             print(f"\r{i + 1}/{len(rows)}", end="", flush=True)
-        correct = r["label"] == "correct"
-        if accept and correct: ta += 1
-        elif accept and not correct: fa += 1
-        elif not accept and correct: fr += 1
-        else: tr += 1
-    if args.base_url:
+    if needs_model:
         print()
 
-    n_correct, n_incorrect = ta + fr, fa + tr
-    print(json.dumps({
-        "checks": "type" + ("+roundtrip" if args.base_url else ""),
+    combined = [all(per_probe[p][i] for p in per_probe) for i in range(len(rows))]
+
+    # where do the surviving false-accepts come from?
+    traps = [i for i, r in enumerate(rows) if r["label"] == "incorrect" and not r["gold"]]
+    wrong_span = [i for i, r in enumerate(rows) if r["label"] == "incorrect" and r["gold"]]
+    report = {
+        "checks": checks,
+        "checker": args.model,
         "n_labeled": len(rows),
-        # the load-bearing number: wrong answers that sneak through
-        "false_accept_rate": fa / n_incorrect if n_incorrect else None,
-        # the cost side: right answers we throw away (burns resamples/coverage)
-        "false_reject_rate": fr / n_correct if n_correct else None,
-    }, indent=2))
+        "combined": confusion(rows, combined),
+        "per_probe": {p: confusion(rows, v) for p, v in per_probe.items()},
+        "combined_far_on_answered_traps": (sum(combined[i] for i in traps) / len(traps)) if traps else None,
+        "combined_far_on_wrong_spans": (sum(combined[i] for i in wrong_span) / len(wrong_span)) if wrong_span else None,
+    }
+    print(json.dumps(report, indent=2))
+
+    if args.show_fa:
+        shown = 0
+        for i, r in enumerate(rows):
+            if combined[i] and r["label"] == "incorrect" and shown < args.show_fa:
+                shown += 1
+                out = json.loads(r["output"])
+                kind = "trap" if not r["gold"] else "wrong-span"
+                print(f"--- false accept ({kind}, {r['model']}, {r['id']})")
+                print(f"Q:    {r['question']}")
+                print(f"gold: {r['gold']}")
+                print(f"ans:  {out['ans']}")
+                print(f"ev:   {out['ev'][:300]}")
+                print()
 
 if __name__ == "__main__":
     main()

@@ -14,6 +14,9 @@ data/shards/
 # training checkpoints
 checkpoints/
 
+# v2 checker reply cache
+cache/
+
 # gate predictions (run_gate.py --preds input files)
 preds/
 
