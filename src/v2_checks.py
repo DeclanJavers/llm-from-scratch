@@ -81,10 +81,17 @@ def checker_reply(base_url, model, prompt, cache, key, max_tokens=256, retries=3
     choice = out["choices"][0]
     msg = choice["message"]
     reply = (msg.get("content") or "").strip()
+    if not reply and choice.get("finish_reason") == "length":
+        # a reasoning checker was cut off mid-CoT before content appeared;
+        # one retry with a much larger budget, else cache empty for refetch
+        payload["max_tokens"] = max_tokens * 4
+        out = api(base_url, "/chat/completions", payload, timeout=600)
+        choice = out["choices"][0]
+        msg = choice["message"]
+        reply = (msg.get("content") or "").strip()
     if not reply and choice.get("finish_reason") != "length":
         # some models via LM Studio put text in reasoning fields, leaving content
-        # empty. But if we hit the length cap, the reasoning is a truncated CoT
-        # with no verdict — cache it as empty so a later run refetches it.
+        # empty — the reply text was misrouted, not truncated
         reply = (msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
     entry = dict(zip(("probe", "checker", "row_model", "id"), key), reply=reply)
     cache[key] = entry
