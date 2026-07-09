@@ -21,7 +21,7 @@ import argparse
 import json
 import os
 
-from validator import v0_check, v1_grade
+from validator import v0_check, v1_grade, canon
 
 BENCH = "data/eval/validator_bench.jsonl"
 
@@ -50,9 +50,10 @@ def build(pred_paths, eval_path, out_path):
                 label = "incorrect"          # answered an unanswerable question
             elif g["f1"] >= 0.75:
                 label = "correct"
-            elif g["f1"] <= 0.25:
-                label = "incorrect"
+            elif g["f1"] <= 0.25 and not any(canon(a) in canon(parsed["ans"]) for a in ex["answers"]):
+                label = "incorrect"          # low overlap AND gold not inside the answer
             else:
+                # includes verbose-but-gold-containing answers F1 punishes unfairly
                 label, n_review = None, n_review + 1
             rows.append({"model": model, "id": pred["id"], "question": ex["question"],
                          "document": ex["document"], "output": pred["output"],
