@@ -75,7 +75,9 @@ def checker_reply(base_url, model, prompt, cache, key, max_tokens=64, retries=3)
             if attempt == retries:
                 raise   # cache holds everything done so far; rerun resumes
             time.sleep(2 ** (attempt + 1))
-    reply = out["choices"][0]["message"]["content"].strip()
+    msg = out["choices"][0]["message"]
+    # some models via LM Studio put text in reasoning fields, leaving content empty
+    reply = (msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
     entry = dict(zip(("probe", "checker", "row_model", "id"), key), reply=reply)
     cache[key] = entry
     with open(cache["__path__"], "a") as f:
@@ -86,6 +88,8 @@ REFUSAL_MARKERS = ("no answer", "not contain", "not stated", "does not", "doesn'
                    "cannot answer", "can't answer", "not mentioned", "not provided")
 
 def roundtrip_accept(reply, ans):
+    if not reply.strip():
+        return False   # fail closed: no reply is not an endorsement
     r = reply.lower()
     if any(m in r for m in REFUSAL_MARKERS):
         return False
@@ -108,7 +112,8 @@ def load_cache(path):
         with open(path) as f:
             for line in f:
                 e = json.loads(line)
-                cache[(e["probe"], e["checker"], e["row_model"], e["id"])] = e
+                if e["reply"].strip():   # empty replies were fetch bugs; refetch them
+                    cache[(e["probe"], e["checker"], e["row_model"], e["id"])] = e
     return cache
 
 def confusion(rows, verdicts):
