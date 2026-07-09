@@ -82,13 +82,25 @@ def checker_reply(base_url, model, prompt, cache, key, max_tokens=64, retries=3)
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return reply
 
+REFUSAL_MARKERS = ("no answer", "not contain", "not stated", "does not", "doesn't",
+                   "cannot answer", "can't answer", "not mentioned", "not provided")
+
 def roundtrip_accept(reply, ans):
-    if "NO ANSWER" in reply.upper():
+    r = reply.lower()
+    if any(m in r for m in REFUSAL_MARKERS):
         return False
-    return token_f1(reply, ans) >= 0.5 or canon(ans) in canon(reply) or canon(reply) in canon(ans)
+    if token_f1(reply, ans) >= 0.5:
+        return True
+    # containment fallback for "the answer is X"-style verbosity — but a reply
+    # that just restates the whole evidence contains everything; cap its length
+    if len(reply.split()) <= max(20, 3 * len(ans.split())):
+        return canon(ans) in canon(reply) or canon(reply) in canon(ans)
+    return False
 
 def verify_accept(reply):
-    return reply.strip().upper().startswith("YES")
+    # first alphabetic word, markdown/punctuation stripped: "**Yes**, ..." -> yes
+    words = re.findall(r"[a-zA-Z]+", reply)
+    return bool(words) and words[0].lower() == "yes"
 
 def load_cache(path):
     cache = {"__path__": path}
