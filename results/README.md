@@ -45,6 +45,57 @@ Still missing: the headline target row — a Qwen3.5-8B-class model (the
 hypothesis names it). Download it in LM Studio and run the same two
 commands when convenient.
 
+## V2 validator results (checker probes on the labeled bench)
+
+From `src/v2_checks.py` against the corrected validator bench (2,268 labeled
+rows: 1,636 correct / 632 incorrect; 41 auto-labels flipped after semantic
+re-judging). FAR = incorrect answers accepted (caps verified precision);
+FRR = correct answers rejected (costs coverage/resamples). Combined = AND
+of type+roundtrip+verify.
+
+| checker | probe | FAR | FRR |
+|---|---|---|---|
+| — | type (rule-based) | 0.919 | 0.045 |
+| qwen3.5-2b | roundtrip | 0.378 | 0.251 |
+| qwen3.5-2b | verify | 0.476 | 0.254 |
+| qwen3.5-2b | combined | 0.234 | 0.414 |
+| gemma-4-e2b | roundtrip | 0.310 | 0.566 |
+| gemma-4-e2b | verify | 0.468 | 0.151 |
+| gemma-4-e2b | combined | 0.212 | 0.617 |
+
+Cross-model ensembles (`experiments/v2_combos.py`, evaluated from the reply
+cache), the useful frontier points:
+
+| combo | FAR | FRR | note |
+|---|---|---|---|
+| type + qw_rt + gm_vf | 0.242 | 0.337 | same FAR as all-Qwen stack, −7.7 pts FRR |
+| type + qw_rt + qw_vf + gm_vf | 0.171 | 0.450 | add Gemma verify to Qwen stack |
+| qw_rt + qw_vf + gm_rt + gm_vf | 0.089 | 0.727 | sub-0.1 FAR costs ~73% rejection |
+
+### Reading
+
+- **Cross-model checking beats self-checking.** Adding one Gemma probe to
+  the Qwen stack strictly improves the tradeoff — the checkers' errors are
+  partly decorrelated, so the AND removes more bad accepts than good ones.
+- **Measured FAR is an upper bound.** Auditing the surviving false-accepts
+  shows a chunk are bench noise, not validator errors: ambiguous questions
+  (Toyota said-vs-closed), incomplete gold lists (UK banned Sunday driving
+  too), and "unanswerable" traps whose evidence answers them verbatim
+  ("What was the triad?"). Gold noise puts a floor under measurable FAR.
+- **The hard survivors are premise-mismatch traps and evidence-local
+  plausibility.** Traps like "over 118 clubs" (text: 400) or "US's
+  third-largest seaport" (text: Florida's third) look fully supported
+  unless the checker notices the quantifier/scope mismatch; wrong spans
+  like Astra 2A are correct within the quoted evidence and only wrong
+  given the full document. Both motivate a full-document re-answer probe —
+  the bench rows carry the document, and the cache makes it cheap to add.
+- **Checker plumbing matters as much as checker judgment.** gemma-4-e2b
+  reasons before answering via LM Studio; tight `max_tokens` truncated its
+  CoT and produced degenerate rates (verify rejected everything, roundtrip
+  accepted everything) until budgets were raised and verdicts parsed from
+  the end of the reply. Fail-closed on empty replies kept the bug visible
+  instead of silently inflating acceptance.
+
 ## Configuration notes
 
 - qwen3.5-2b ran with thinking disabled in LM Studio (the `/no_think` soft
