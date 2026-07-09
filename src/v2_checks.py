@@ -58,7 +58,10 @@ Text: "{ev}"
 
 Does the text explicitly state the answer to the question? Being on the same topic is not enough — the specific answer must be present. Reply with exactly one word: YES or NO."""
 
-def checker_reply(base_url, model, prompt, cache, key, max_tokens=64, retries=3):
+def checker_reply(base_url, model, prompt, cache, key, max_tokens=256, retries=3):
+    # budgets are generous because reasoning checkers (e.g. gemma-4-e2b via
+    # LM Studio) spend ~100+ tokens thinking before content appears; a tight
+    # cap truncates mid-CoT and content comes back empty
     if key in cache:
         return cache[key]["reply"]
     payload = {
@@ -75,9 +78,14 @@ def checker_reply(base_url, model, prompt, cache, key, max_tokens=64, retries=3)
             if attempt == retries:
                 raise   # cache holds everything done so far; rerun resumes
             time.sleep(2 ** (attempt + 1))
-    msg = out["choices"][0]["message"]
-    # some models via LM Studio put text in reasoning fields, leaving content empty
-    reply = (msg.get("content") or msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
+    choice = out["choices"][0]
+    msg = choice["message"]
+    reply = (msg.get("content") or "").strip()
+    if not reply and choice.get("finish_reason") != "length":
+        # some models via LM Studio put text in reasoning fields, leaving content
+        # empty. But if we hit the length cap, the reasoning is a truncated CoT
+        # with no verdict — cache it as empty so a later run refetches it.
+        reply = (msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
     entry = dict(zip(("probe", "checker", "row_model", "id"), key), reply=reply)
     cache[key] = entry
     with open(cache["__path__"], "a") as f:
@@ -102,9 +110,10 @@ def roundtrip_accept(reply, ans):
     return False
 
 def verify_accept(reply):
-    # first alphabetic word, markdown/punctuation stripped: "**Yes**, ..." -> yes
-    words = re.findall(r"[a-zA-Z]+", reply)
-    return bool(words) and words[0].lower() == "yes"
+    # reasoning checkers think first and conclude last; take the final verdict
+    # word. Plain "YES"/"NO" replies parse identically.
+    verdicts = re.findall(r"\b(yes|no)\b", reply.lower())
+    return bool(verdicts) and verdicts[-1] == "yes"
 
 def load_cache(path):
     cache = {"__path__": path}
@@ -112,8 +121,11 @@ def load_cache(path):
         with open(path) as f:
             for line in f:
                 e = json.loads(line)
-                if e["reply"].strip():   # empty replies were fetch bugs; refetch them
-                    cache[(e["probe"], e["checker"], e["row_model"], e["id"])] = e
+                if not e["reply"].strip():   # empty replies were fetch bugs; refetch
+                    continue
+                if e["probe"] == "verify" and not re.search(r"\b(yes|no)\b", e["reply"].lower()):
+                    continue   # truncated-CoT fragments ("1.  **") cached by old runs; refetch
+                cache[(e["probe"], e["checker"], e["row_model"], e["id"])] = e
     return cache
 
 def confusion(rows, verdicts):
@@ -163,7 +175,7 @@ def main():
             key = ("verify", args.model, r["model"], r["id"])
             reply = checker_reply(args.base_url, args.model,
                                   VERIFY_PROMPT.format(ev=out["ev"], question=r["question"]),
-                                  cache, key, max_tokens=8)
+                                  cache, key, max_tokens=512)
             per_probe.setdefault("verify", []).append(verify_accept(reply))
         if needs_model:
             print(f"\r{i + 1}/{len(rows)}", end="", flush=True)
