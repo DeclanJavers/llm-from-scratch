@@ -72,13 +72,38 @@ defined in docs/DESIGN.md and enforced by `evals/validator.py`. Never emit a
 free-text answer format.
 
 ## Data pipeline
+Token budget per bucket (3B plan + 50M held out; extension to 8B only adds
+more FineWeb-Edu — no new sources):
+
+| bucket                    | tokens  | source                          |
+|---------------------------|---------|---------------------------------|
+| stable: fluency           | ~2.04B  | FineWeb-Edu sample-10BT         |
+| stable: facts (on-domain: | ~380M   | English Wikipedia               |
+|   the gate IS wiki text)  |         |                                 |
+| stable: QA format         | ~130M   | converted QA pool               |
+| anneal: QA                | ~225M   | same QA pool, re-sampled        |
+| anneal: top web           | ~225M   | FineWeb-Edu int_score=5 (≥4 if  |
+|                           |         | the 5-slice is too thin)        |
+| val (two sets)            | ~50M    | carved from FineWeb-Edu + QA    |
+
 - Sources (all free, via HuggingFace datasets, streaming download):
-  1. FineWeb-Edu (sample-10BT config) — fluency base.
-  2. English Wikipedia — structure/facts.
-  3. QA layer: convert SQuAD v1+v2, Natural Questions (short answer w/
-     evidence passage), TriviaQA (rc config), HotpotQA into the locked format
-     above. (DROP, RACE, CoQA are CUT — non-extractive answers train against
-     the gate.) Conversion rules:
+  1. FineWeb-Edu (sample-10BT config, ~10B tokens — covers the 8B extension).
+  2. English Wikipedia (wikimedia/wikipedia, en) — need ~380M of ~4-5B.
+  3. QA pool (~260-300M tokens rendered; ≤2 epochs total across both phases —
+     well under the ~4-epoch degradation threshold). Convert to the locked
+     format above:
+     - SQuAD v2 train (~30M; v2 SUBSUMES v1 — do not also load v1, it
+       double-counts the answerable questions).
+     - Natural Questions short-answer (~35-40M).
+     - HotpotQA (~90M; multi-paragraph + distractors = exactly the open-note
+       skill; DROP its yes/no comparison rows — not extractive).
+     - TriviaQA rc (~100-140M after truncating docs to fit context).
+       **Distant-supervised = noisiest source**: the doc contains the answer
+       string but may not answer the question. Before full inclusion, audit
+       ~500 converted rows through the V2 cross-model checkers (LM Studio,
+       reply cache) and downweight/cut based on the measured junk rate.
+     (DROP, RACE, CoQA are CUT — non-extractive answers train against the
+     gate.) Conversion rules:
      - `ev` = the sentence (or minimal window) of the passage containing the
        gold span; `ans` = the gold span itself.
      - SQuAD v2 unanswerables → the `<|abstain|>` form.
@@ -86,9 +111,16 @@ free-text answer format.
        rendered back to JSON** (ev verbatim in doc, ans inside ev). Drop rows
        that can't be rendered gate-passing; report per-source yield in the
        M1 data report.
+     - **Decontamination:** never convert SQuAD's validation split, and
+       n-gram-screen every QA row against the 2000 frozen-gate questions
+       (gate passages appearing in Wikipedia text is fine — open-note QA
+       provides the passage at test time; question/answer pairs must not
+       leak).
   4. Directory `model/data/qa_synthetic/*.jsonl` (fields: context, question,
      answer) — populated later by post-training; loader picks up whatever is
      there at run start, converts and validates it like source 3.
+- Shards are built once and pushed to a private HF dataset repo (3B tokens
+  uint16 ≈ 6GB) — the canonical store; any GPU session streams them down.
 - Pre-tokenize EVERYTHING offline into uint16 binary shards (~100M tokens per
   shard) with an index file; training reads via np.memmap. Never tokenize in
   the training loop. Concatenate docs with <|endoftext|>, slice into fixed
