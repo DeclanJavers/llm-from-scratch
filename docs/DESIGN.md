@@ -103,27 +103,27 @@ Goodhart insurance.
 
 ### Frozen gate artifact
 
-`data/eval/squad2_frozen.jsonl` (2000 examples: 1000 answerable + 1000
+`evals/data/squad2_frozen.jsonl` (2000 examples: 1000 answerable + 1000
 unanswerable, SQuAD 2.0 validation, seed 0) is committed and byte-frozen:
 
     sha256 b28e813dce00985de005784fc476cf47f0a8090bba847da18ca6a94e0a068527
 
 If that hash ever changes, every previously reported number is void.
-Grade predictions with `src/run_gate.py`; the checks live in `src/validator.py`.
+Grade predictions with `evals/run_gate.py`; the checks live in `evals/validator.py`.
 
-`data/eval/squad2_dev.jsonl` (2000 examples, seed 1, id-disjoint from the
+`evals/data/squad2_dev.jsonl` (2000 examples, seed 1, id-disjoint from the
 frozen set) is the **dev set**: validator development, V2 tuning, and the
 labeled validator bench all happen here. The frozen set is for reporting only.
 
 ### Gate tooling
 
-- `src/gen_preds.py` — runs any model on an eval set via an OpenAI-compatible
+- `evals/gen_preds.py` — runs any model on an eval set via an OpenAI-compatible
   server (LM Studio over the network). Extracts the first JSON object from
   replies (adapter for instruct models); resumable.
-- `src/build_validator_bench.py` — builds the labeled set that scores the
+- `evals/build_validator_bench.py` — builds the labeled set that scores the
   validator itself: auto-labels clear cases from gold F1, `--review` gives an
   interactive loop for the ambiguous band.
-- `src/v2_checks.py` — type-agreement (rule-based) and round-trip (model-based)
+- `evals/v2_checks.py` — type-agreement (rule-based) and round-trip (model-based)
   checks, scored as a classifier against the bench. The false-accept rate is
   the number that caps the whole system's verified accuracy.
 

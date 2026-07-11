@@ -4,17 +4,15 @@ cache — no generations. For every AND-subset of the five available probes
 report FAR/FRR, then print the Pareto frontier (no combo dominates another
 on both rates).
 
-    python experiments/v2_combos.py
+    python evals/v2_combos.py
 """
 import itertools
 import json
-import sys, os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from v2_checks import type_check, roundtrip_accept, verify_accept, load_cache, confusion
 
-BENCH = "data/eval/validator_bench.jsonl"
-CACHE = "cache/v2_replies.jsonl"
+BENCH = "evals/data/validator_bench.jsonl"
+CACHE = "evals/cache/v2_replies.jsonl"
 CHECKERS = {"qw": "qwen_qwen3.5-2b", "gm": "google/gemma-4-e2b"}
 
 def main():

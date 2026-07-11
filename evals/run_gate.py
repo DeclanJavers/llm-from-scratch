@@ -4,11 +4,11 @@ The harness is generation-agnostic: run any model however you like (mps, cuda,
 llama.cpp, an API) and write one JSON line per example:
     {"id": "<eval example id>", "output": "<raw model output string>"}
 then:
-    python src/run_gate.py --preds preds/qwen3-0.6b.jsonl
+    python evals/run_gate.py --preds evals/preds/qwen3-0.6b.jsonl
 
 Two built-in baselines exist for smoke-testing the harness itself:
-    python src/run_gate.py --baseline abstain          # floor: never answers
-    python src/run_gate.py --baseline first_sentence   # floor: no reading comprehension
+    python evals/run_gate.py --baseline abstain          # floor: never answers
+    python evals/run_gate.py --baseline first_sentence   # floor: no reading comprehension
 
 Headline numbers: coverage (how often it answers), selective F1 (how good the
 answers it commits to are), answerability accuracy (does it know when to
@@ -91,7 +91,7 @@ def run(eval_rows, outputs, name, show_fails=0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--eval-set", default="data/eval/squad2_frozen.jsonl")
+    ap.add_argument("--eval-set", default="evals/data/squad2_frozen.jsonl")
     ap.add_argument("--preds", help="predictions jsonl: {'id': ..., 'output': ...}")
     ap.add_argument("--baseline", choices=sorted(BASELINES))
     ap.add_argument("--report-out", help="also write the report as json")

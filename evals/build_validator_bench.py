@@ -12,8 +12,8 @@ ambiguous middle band goes to a human review queue.
     F1 <= 0.25 vs gold                        -> incorrect
     in between                                -> review by hand
 
-Build:   python src/build_validator_bench.py --preds preds/dev/*.jsonl
-Review:  python src/build_validator_bench.py --review
+Build:   python evals/build_validator_bench.py --preds evals/preds/dev/*.jsonl
+Review:  python evals/build_validator_bench.py --review
 Only V0-passing, answered outputs are included: V0 failures and abstentions
 never reach V2, so they don't belong in its benchmark.
 """
@@ -23,7 +23,7 @@ import os
 
 from validator import v0_check, v1_grade, canon
 
-BENCH = "data/eval/validator_bench.jsonl"
+BENCH = "evals/data/validator_bench.jsonl"
 
 def load_jsonl(path):
     with open(path) as f:
@@ -96,7 +96,7 @@ def review(out_path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--preds", nargs="+", help="prediction jsonl files (from the dev set)")
-    ap.add_argument("--eval-set", default="data/eval/squad2_dev.jsonl")
+    ap.add_argument("--eval-set", default="evals/data/squad2_dev.jsonl")
     ap.add_argument("--out", default=BENCH)
     ap.add_argument("--review", action="store_true", help="hand-label the ambiguous band")
     args = ap.parse_args()

@@ -1,8 +1,13 @@
 # Project status / handoff
 
 Branch: `claude/thoughts-on-this-ua0f3y`. Read `docs/DESIGN.md` first (the
-authoritative plan), then this file for current state. `results/README.md`
+authoritative plan), then this file for current state. `evals/results/README.md`
 has the full numbers.
+
+Repo layout (reorganized 2026-07-11): everything eval/validator-side lives in
+`evals/` (code, eval sets, preds, cache, results). The old GPT-2-style training
+pipeline (`src/`) was **deleted** — the new model gets built fresh in `model/`
+(directory not created yet). Run all commands from the repo root.
 
 ## The one-sentence thesis
 
@@ -24,32 +29,32 @@ any training.
 ## DONE (committed on the branch)
 
 **Gate / validator — the front-loaded risky part, essentially finished.**
-- `src/validator.py` — V0 mechanical checks (JSON parses, schema exact, `ev`
+- `evals/validator.py` — V0 mechanical checks (JSON parses, schema exact, `ev`
   is a verbatim substring of the doc, `ans` inside `ev`) + V1 EM/F1 grading.
   Canonical matching: forgives case/unicode-quote/whitespace/ellipsis
   cosmetics, fails on content differences. Self-tests pass.
-- `data/eval/squad2_frozen.jsonl` — 2000 ex (1000 answerable + 1000
+- `evals/data/squad2_frozen.jsonl` — 2000 ex (1000 answerable + 1000
   unanswerable traps), SQuAD 2.0 val, seed 0, **hash-pinned in DESIGN.md**.
   Never train/resample/tune against it.
-- `data/eval/squad2_dev.jsonl` — 2000 ex, seed 1, id-disjoint from frozen.
+- `evals/data/squad2_dev.jsonl` — 2000 ex, seed 1, id-disjoint from frozen.
   All validator tuning happens here.
-- `src/run_gate.py` — generation-agnostic grader. Reports V0 pass, coverage,
+- `evals/run_gate.py` — generation-agnostic grader. Reports V0 pass, coverage,
   selective F1, answerability acc, `answerable_answered` /
   `unanswerable_abstained` / `f1_when_committed` breakdown. `--show-fails N`,
   `--only-preds` (smoke), `--report-out`.
-- `src/gen_preds.py` — runs any model on an eval set via an OpenAI-compatible
+- `evals/gen_preds.py` — runs any model on an eval set via an OpenAI-compatible
   server (LM Studio over LAN). Handles reasoning models (think-strip, last
   schema-shaped JSON object, reasoning-field fallback), `--no-think`,
   `--extra-body`, `--re-extract`, retries w/ backoff, resumable.
-- `data/eval/validator_bench.jsonl` — 2,268 labeled model outputs
+- `evals/data/validator_bench.jsonl` — 2,268 labeled model outputs
   (1,636 correct / 632 incorrect) for scoring the validator itself.
   Auto-labeled from gold F1; ambiguous band + 44 verbose-but-correct
   auto-mislabels fixed by LLM re-judging (`label_source` tracks provenance).
-- `src/v2_checks.py` — semantic probes (type rule-based / roundtrip / verify),
-  scored as classifiers. Reply cache (`cache/v2_replies.jsonl`) makes
-  re-scoring free. `experiments/v2_combos.py` — cache-only ensemble sweep.
+- `evals/v2_checks.py` — semantic probes (type rule-based / roundtrip / verify),
+  scored as classifiers. Reply cache (`evals/cache/v2_replies.jsonl`) makes
+  re-scoring free. `evals/v2_combos.py` — cache-only ensemble sweep.
 
-**Baselines on frozen gate** (`results/`):
+**Baselines on frozen gate** (`evals/results/`):
 - qwen3.5-2b (no-think): 0.698 overall F1, cautious/precise (79% attempt,
   0.879 F1 when committed, 70% trap abstention).
 - gemma-4-e2b: 0.701 overall F1, eager/sloppy (93% attempt, 65% abstention).
@@ -64,8 +69,8 @@ any training.
 ## OPEN (not blocking training)
 
 1. **8B target row** — hypothesis names Qwen3.5-8B; not yet run. Download in
-   LM Studio, then: `gen_preds.py … --model <8b> --out preds/qwen3.5-8b.jsonl`
-   then `run_gate.py --preds … --report-out results/qwen3.5-8b.frozen.json`.
+   LM Studio, then: `gen_preds.py … --model <8b> --out evals/preds/qwen3.5-8b.jsonl`
+   then `run_gate.py --preds … --report-out evals/results/qwen3.5-8b.frozen.json`.
    This is the actual "beat this" line.
 2. **Full-document re-answer probe** — the hard validator survivors are
    evidence-local plausibility (e.g. Astra 2A: right within the quoted `ev`,
@@ -79,8 +84,9 @@ any training.
 Architecture per DESIGN.md: decoder-only, **deep-and-thin ~24L × d896**, GQA
 (14 Q / 2 KV), RMSNorm, SwiGLU, no biases, RoPE, QK-norm, tied embeddings,
 **keep 32k vocab** (do NOT shrink — tokens-per-document is the binding
-constraint for open-note). `src/model.py` is still the OLD GPT-2-style
-skeleton (16×1024, LayerNorm, learned pos-emb, GELU) — **not yet updated**.
+constraint for open-note). The old GPT-2-style skeleton (14×1024, LayerNorm,
+learned pos-emb) was **deleted 2026-07-11** — it's in git history if needed,
+but the new model is written from scratch in `model/`.
 
 **User is now leaning ~300M instead of 235M** (round number, "sub-billion"
 story). Fine — marginal.
@@ -96,22 +102,20 @@ story). Fine — marginal.
   is on-thesis (cheap deployment). Do it at the end.
 - **QAT** only if we later want a headline int4 claim; optional.
 
-Immediate build steps when resuming:
-1. Rewrite `src/model.py` to the DESIGN arch (RoPE, GQA, RMSNorm, SwiGLU,
+Immediate build steps when resuming (all in a new `model/` directory):
+1. Write `model/model.py` to the DESIGN arch (RoPE, GQA, RMSNorm, SwiGLU,
    QK-norm), target ~300M, param-count + loss smoke test.
-2. Add schema boilerplate as special tokens in `train_tokenizer.py`
-   (slots reserved; makes JSON scaffolding ~4 tokens, unmalformable).
-3. Wire bf16 autocast + resumable checkpointing into `src/train.py`.
+2. Tokenizer trainer with schema boilerplate as special tokens
+   (makes JSON scaffolding ~4 tokens, unmalformable).
+3. Training loop with bf16 autocast + resumable checkpointing from day one.
 4. Then: tokenize corpus → pretrain (3-phase: FineWeb-Edu 85% / task-anneal
    15% / SFT) → grade on frozen gate → wrap with validator + resampling.
 
 ## Session coordination
 
 Two sessions are active on this branch. Whichever session takes model
-building owns `src/model.py`, `src/train.py`, and the tokenizer scripts
-(`src/train_tokenizer.py`, `src/tokenize_corpus.py`); the other should stick
-to the OPEN items above — the 8B row and validator probes touch a disjoint
-set of files (`src/gen_preds.py`, `src/v2_checks.py`, `results/`, `preds/`).
+building owns `model/` (doesn't exist yet — it creates it); the other
+should stick to the OPEN items above, which touch only `evals/`.
 Pull before starting work; push small and often.
 
 ## Environment notes

@@ -4,7 +4,7 @@ Deterministic: same seed -> byte-identical file. This set is the eval gate.
 Nothing is ever trained against it, resampled against it, or mined from it —
 that includes synthetic-data filtering. Goodhart insurance.
 
-Writes data/eval/squad2_frozen.jsonl, one example per line:
+Writes evals/data/squad2_frozen.jsonl, one example per line:
     {"id": ..., "question": ..., "document": ..., "answers": [...]}
 answers == [] means the question is unanswerable (the model should abstain).
 """
@@ -20,10 +20,10 @@ def main():
     ap.add_argument("--n-answerable", type=int, default=1000)
     ap.add_argument("--n-unanswerable", type=int, default=1000)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--out", default="data/eval/squad2_frozen.jsonl")
+    ap.add_argument("--out", default="evals/data/squad2_frozen.jsonl")
     ap.add_argument("--exclude", help="jsonl whose ids to keep out (build the dev set "
-                    "disjoint from the frozen set: --seed 1 --exclude data/eval/squad2_frozen.jsonl "
-                    "--out data/eval/squad2_dev.jsonl)")
+                    "disjoint from the frozen set: --seed 1 --exclude evals/data/squad2_frozen.jsonl "
+                    "--out evals/data/squad2_dev.jsonl)")
     args = ap.parse_args()
 
     excluded = set()

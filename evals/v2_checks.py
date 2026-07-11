@@ -11,9 +11,9 @@ Three probes, combined with AND (an output must pass every enabled probe):
     answer to this question, YES or NO.
 
 Score against the labeled bench (build_validator_bench.py):
-    python src/v2_checks.py --checks type,roundtrip,verify \
+    python evals/v2_checks.py --checks type,roundtrip,verify \
         --base-url http://mac.local:1234/v1 --model qwen3-0.6b
-Checker replies are cached (cache/v2_replies.jsonl) keyed by probe+checker+row,
+Checker replies are cached (evals/cache/v2_replies.jsonl) keyed by probe+checker+row,
 so re-scoring with different combinations or thresholds is free after one pass.
 Use a checker model DIFFERENT from the model that produced the bench rows where
 possible — a checker shares blind spots with itself (correlated errors).
@@ -146,12 +146,12 @@ def confusion(rows, verdicts):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bench", default="data/eval/validator_bench.jsonl")
+    ap.add_argument("--bench", default="evals/data/validator_bench.jsonl")
     ap.add_argument("--checks", default="type,roundtrip",
                     help="comma list from: type, roundtrip, verify")
     ap.add_argument("--base-url", help="needed for roundtrip/verify")
     ap.add_argument("--model", help="checker model id (prefer one that did NOT produce the bench rows)")
-    ap.add_argument("--cache", default="cache/v2_replies.jsonl")
+    ap.add_argument("--cache", default="evals/cache/v2_replies.jsonl")
     ap.add_argument("--show-fa", type=int, default=0, metavar="N",
                     help="print N false-accepts that passed every enabled probe")
     args = ap.parse_args()

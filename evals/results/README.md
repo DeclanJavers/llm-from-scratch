@@ -1,6 +1,6 @@
 # Baseline results — frozen gate
 
-All numbers from `src/run_gate.py` against the hash-pinned frozen set
+All numbers from `evals/run_gate.py` against the hash-pinned frozen set
 (2000 examples: 1000 answerable, 1000 unanswerable traps). Full reports in
 the `.json` files alongside this file.
 
@@ -47,7 +47,7 @@ commands when convenient.
 
 ## V2 validator results (checker probes on the labeled bench)
 
-From `src/v2_checks.py` against the corrected validator bench (2,268 labeled
+From `evals/v2_checks.py` against the corrected validator bench (2,268 labeled
 rows: 1,636 correct / 632 incorrect; 41 auto-labels flipped after semantic
 re-judging). FAR = incorrect answers accepted (caps verified precision);
 FRR = correct answers rejected (costs coverage/resamples). Combined = AND
@@ -63,7 +63,7 @@ of type+roundtrip+verify.
 | gemma-4-e2b | verify | 0.468 | 0.151 |
 | gemma-4-e2b | combined | 0.212 | 0.617 |
 
-Cross-model ensembles (`experiments/v2_combos.py`, evaluated from the reply
+Cross-model ensembles (`evals/v2_combos.py`, evaluated from the reply
 cache), the useful frontier points:
 
 | combo | FAR | FRR | note |
@@ -102,7 +102,7 @@ cache), the useful frontier points:
   switch is not honored by this model; use the UI toggle). Thinking-mode
   replies averaged ~10k chars and stalled the server; no-think replies
   average ~61 chars.
-- Prompts and extraction adapter: `src/gen_preds.py` (temperature 0).
+- Prompts and extraction adapter: `evals/gen_preds.py` (temperature 0).
   The adapter takes the LAST schema-shaped JSON object in a reply and the
   validator forgives cosmetic quote differences (case, unicode punctuation,
   whitespace, ellipsis framing) — content differences still fail.

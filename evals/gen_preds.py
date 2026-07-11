@@ -1,12 +1,12 @@
 """Run models against an eval set via any OpenAI-compatible server.
 
 Built for LM Studio running on another Mac ("lms server start", port 1234):
-    python src/gen_preds.py --base-url http://<mac-hostname>.local:1234/v1 --list-models
-    python src/gen_preds.py --base-url http://<mac-hostname>.local:1234/v1 \
-        --model qwen3-0.6b --out preds/qwen3-0.6b.jsonl
+    python evals/gen_preds.py --base-url http://<mac-hostname>.local:1234/v1 --list-models
+    python evals/gen_preds.py --base-url http://<mac-hostname>.local:1234/v1 \
+        --model qwen3-0.6b --out evals/preds/qwen3-0.6b.jsonl
 
 Writes one line per example: {"id": ..., "output": <extracted json>, "raw": <full reply>}
-then grade with: python src/run_gate.py --preds preds/qwen3-0.6b.jsonl
+then grade with: python evals/run_gate.py --preds evals/preds/qwen3-0.6b.jsonl
 
 Resumable: reruns skip ids already present in the output file.
 """
@@ -92,7 +92,7 @@ def main():
     ap.add_argument("--base-url", help="e.g. http://mac.local:1234/v1")
     ap.add_argument("--model")
     ap.add_argument("--list-models", action="store_true")
-    ap.add_argument("--eval-set", default="data/eval/squad2_frozen.jsonl")
+    ap.add_argument("--eval-set", default="evals/data/squad2_frozen.jsonl")
     ap.add_argument("--out")
     ap.add_argument("--limit", type=int, help="only run the first N examples (smoke test)")
     ap.add_argument("--temperature", type=float, default=0.0)
