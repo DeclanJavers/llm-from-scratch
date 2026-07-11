@@ -50,11 +50,19 @@ fraction of the inference cost. Report both comparisons: system-vs-raw-8B
 
 ## Architecture (~200M class)
 
-- Decoder-only, **deep-and-thin: ~24 layers × d_model 896** (replaces
-  16 × 1024; depth beats width sub-1B).
-- **GQA**: 14 query heads, 2 KV heads (~7× smaller KV cache).
-- RMSNorm, SwiGLU, no biases, RoPE, **QK-norm**, tied embeddings.
-- Context 4096 if memory allows, else 2048 + RoPE-extension anneal later.
+Amended 2026-07-11 — supersedes the earlier deep-and-thin/GQA/tied plan.
+Rationale: adopt the speedrun-proven modded-nanoGPT shape wholesale instead
+of a bespoke geometry; at 2048 context with a quantized deployment target,
+GQA's KV-cache saving is minor, and the untied zero-init head is what the
+reference recipe actually validates. Operative build spec:
+[PRETRAIN_BRIEF.md](PRETRAIN_BRIEF.md).
+
+- Decoder-only, **12 layers × d_model 1024**, 16 heads (head_dim 64),
+  full MHA via SDPA.
+- RMSNorm (pre-norm), SwiGLU (hidden ≈ 2.67×, rounded to /128), no biases,
+  RoPE (theta 10k), **QK-norm**, **untied** embeddings/head, zero-init
+  residual projections. ~215M params (assert 190–230M).
+- Context **2048 fixed** for pretraining; RoPE extension is post-training.
 - **Not doing**: Mamba/SSM hybrids, MoE, ternary — research risk, not free
   wins, at this budget.
 
@@ -68,8 +76,9 @@ fraction of the inference cost. Report both comparisons: system-vs-raw-8B
      data (QA pairs, schema examples). Tokens seen during decay punch above
      their weight.
   3. SFT: the schema exclusively.
-- Cosine or WSD schedule, batch ~0.5M tokens. Muon optimizer if time permits
-  (~20–30% fewer steps to same loss); AdamW fallback.
+- WSD (trapezoidal) schedule, decay aligned with the anneal phase; batch
+  ~0.5M tokens. Muon on 2D weight matrices, AdamW for embeddings/norms/head
+  (decided 2026-07-11; details in PRETRAIN_BRIEF.md).
 - Synthetic data: teacher model generates question/span pairs from
   FineWeb-Edu documents; **keep only pairs the validator verifies.**
 

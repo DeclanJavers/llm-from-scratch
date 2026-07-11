@@ -11,7 +11,7 @@ pipeline (`src/`) was **deleted** — the new model gets built fresh in `model/`
 
 ## The one-sentence thesis
 
-A ~200–300M model paired with a robust validator (sample → check → resample
+A ~200M model paired with a robust validator (sample → check → resample
 or abstain) can match a much larger model (target: Qwen3.5-8B) at extractive
 open-note QA, at a fraction of the inference cost. We test the *system*, not
 the raw model. Validator-first: the gate was built and characterized before
@@ -81,35 +81,25 @@ any training.
 
 ## NEXT: model building (decisions as of this handoff)
 
-Architecture per DESIGN.md: decoder-only, **deep-and-thin ~24L × d896**, GQA
-(14 Q / 2 KV), RMSNorm, SwiGLU, no biases, RoPE, QK-norm, tied embeddings,
-**keep 32k vocab** (do NOT shrink — tokens-per-document is the binding
-constraint for open-note). The old GPT-2-style skeleton (14×1024, LayerNorm,
-learned pos-emb) was **deleted 2026-07-11** — it's in git history if needed,
-but the new model is written from scratch in `model/`.
+**The operative build spec is [PRETRAIN_BRIEF.md](PRETRAIN_BRIEF.md)** —
+milestones M0–M5, built in order, evidence at each gate. Decisions settled
+2026-07-11 (all reflected in the brief and in the amended DESIGN.md):
 
-**User is now leaning ~300M instead of 235M** (round number, "sub-billion"
-story). Fine — marginal.
-
-**Precision decision (discussed, concluded):**
-- **8-bit *training* = NO** at this scale. No FP8 tensor cores on A100/MPS
-  (would emulate = slower), training cost isn't the bottleneck (~25 A100-hr,
-  fits easily in bf16), and it adds instability for ~zero payoff. Same logic
-  as DESIGN's "no ternary."
-- **Cheaper training = bf16 mixed precision** (`torch.autocast`) — the
-  automatic 2× win. Wire this into the training loop.
-- **8-bit *inference* = YES, free** — post-training Q8 is nearly lossless and
-  is on-thesis (cheap deployment). Do it at the end.
-- **QAT** only if we later want a headline int4 claim; optional.
-
-Immediate build steps when resuming (all in a new `model/` directory):
-1. Write `model/model.py` to the DESIGN arch (RoPE, GQA, RMSNorm, SwiGLU,
-   QK-norm), target ~300M, param-count + loss smoke test.
-2. Tokenizer trainer with schema boilerplate as special tokens
-   (makes JSON scaffolding ~4 tokens, unmalformable).
-3. Training loop with bf16 autocast + resumable checkpointing from day one.
-4. Then: tokenize corpus → pretrain (3-phase: FineWeb-Edu 85% / task-anneal
-   15% / SFT) → grade on frozen gate → wrap with validator + resampling.
+- **Architecture: 12L × d1024, MHA, untied embeddings, ~215M** (the
+  modded-nanoGPT speedrun shape). This supersedes the earlier deep-and-thin
+  24×896/GQA/tied plan and the ~300M leaning. 32k vocab stands.
+- **QA data format = the locked JSON schema**, rendered via schema-fragment
+  special tokens; every converted training row must pass the V0+V1 gate.
+  Sources: SQuAD v1+v2, NQ, TriviaQA-rc, HotpotQA (DROP/RACE/CoQA cut —
+  non-extractive).
+- **Compute = Google Colab**: dev on T4/L4 (T4 has no bf16 — unit tests
+  only), full 8B-token run on A100 (~22–27 hr ≈ 330–400 CU ≈ $35–40,
+  spans ~2 sessions via checkpointing).
+- **Precision:** bf16 autocast training (no 8-bit training — no FP8 cores
+  on A100, instability for zero payoff). Int8 quantization at inference
+  only, free, at the end. QAT only if an int4 headline is wanted later.
+- The old GPT-2-style skeleton was **deleted 2026-07-11** (git history has
+  it); everything gets built fresh under `model/`.
 
 ## Session coordination
 

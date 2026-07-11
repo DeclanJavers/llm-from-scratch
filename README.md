@@ -1,6 +1,6 @@
 # tiny-lm
 
-Pretraining a ~300M parameter LLM from scratch for **extractive open-note
+Pretraining a ~200M parameter LLM from scratch for **extractive open-note
 question answering**, built validator-first. The hypothesis: a small model
 paired with a robust validator (sample, check, resample, or abstain) can
 match a much larger model — target Qwen 3.5 8B — at a narrow, verifiable
@@ -16,8 +16,8 @@ read it before starting work.
 - `evals/` — the gate, the eval sets, baseline results, and everything that
   scores models or scores the validator itself. Done and characterized.
 - `model/` — (not created yet) the model, tokenizer, and training code.
-  The old GPT-2-style skeleton was deleted; the new architecture is specified
-  in DESIGN.md and gets built fresh here.
+  The old GPT-2-style skeleton was deleted; the build spec is
+  [docs/PRETRAIN_BRIEF.md](docs/PRETRAIN_BRIEF.md) (milestones M0–M5).
 - `experiments/` — learning scratch code, not part of the pipeline.
 - `docs/` — DESIGN.md (decisions), STATUS.md (state/handoff).
 
