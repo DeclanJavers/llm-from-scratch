@@ -93,8 +93,11 @@ milestones M0–M5, built in order, evidence at each gate. Decisions settled
   Sources: SQuAD v1+v2, NQ, TriviaQA-rc, HotpotQA (DROP/RACE/CoQA cut —
   non-extractive).
 - **Compute = Google Colab**: dev on T4/L4 (T4 has no bf16 — unit tests
-  only), full 8B-token run on A100 (~22–27 hr ≈ 330–400 CU ≈ $35–40,
-  spans ~2 sessions via checkpointing).
+  only). Token budget cut to **3B now** (~7–8 A100-hr or ~20 L4-hr ≈
+  100–115 CU — fits the user's current unit balance), with an extension
+  protocol back to 8B: keep the pre-decay (85%) checkpoint, resume the
+  stable phase with future units, re-anneal. 215M stays the right size —
+  it's ~Chinchilla for this compute; bigger would be worse, not better.
 - **Precision:** bf16 autocast training (no 8-bit training — no FP8 cores
   on A100, instability for zero payoff). Int8 quantization at inference
   only, free, at the end. QAT only if an int4 headline is wanted later.

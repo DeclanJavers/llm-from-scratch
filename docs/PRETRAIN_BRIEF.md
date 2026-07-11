@@ -22,8 +22,14 @@ read-only from here — see docs/STATUS.md coordination note).
   tiny fp32 smoke runs only, never training. Sessions die at ~24h max:
   everything must checkpoint and resume (expect the full run to span 2
   sessions). Detect the GPU and adapt micro-batch automatically.
-- Budget: ~8B pretraining tokens total (~1.0e19 FLOPs ≈ 22–27 A100-hours at
-  35–45% MFU ≈ 330–400 compute units ≈ $35–40).
+- Budget: **3B pretraining tokens now** (~3.3e18 FLOPs ≈ 7–8 A100-hours or
+  ~19–20 L4-hours at 35–45% MFU ≈ 100–115 compute units). This is mildly
+  under Chinchilla for 215M (16 vs ~20 tokens/param — inside the flat part
+  of the isoFLOP basin) and sized to the currently available units.
+  **Extension protocol:** keep the end-of-stable-phase checkpoint (85% mark,
+  before LR decay) permanently; a future budget resumes the stable phase
+  from it, adds tokens toward the original 8B target, then runs a fresh
+  15% anneal. Design nothing that assumes the 3B run is final.
 - Recipe: modern speedrun-style stack (modded-nanoGPT is the reference
   implementation — crib hyperparameter defaults from it when unsure).
 
@@ -87,10 +93,11 @@ free-text answer format.
   shard) with an index file; training reads via np.memmap. Never tokenize in
   the training loop. Concatenate docs with <|endoftext|>, slice into fixed
   2048-token rows (packing by concatenation; no padding anywhere).
-- Two-phase data mix over the 8B-token budget:
-  - STABLE phase (first 85%, ~6.8B tokens): 80% FineWeb-Edu, 15% Wikipedia,
+- Two-phase data mix over the 3B-token budget (percentages hold under
+  extension):
+  - STABLE phase (first 85%, ~2.55B tokens): 80% FineWeb-Edu, 15% Wikipedia,
     5% QA-formatted.
-  - ANNEAL phase (final 15%, ~1.2B tokens, coincides with LR decay): 50%
+  - ANNEAL phase (final 15%, ~450M tokens, coincides with LR decay): 50%
     QA-formatted (real + synthetic), 50% FineWeb-Edu (highest-quality slice,
     by the dataset's educational score field).
   - Implement as two separate shard-group manifests; mixing by sampling shards
@@ -143,10 +150,11 @@ free-text answer format.
 - M4 Pilot: 100M-token run (~20 min A100, ~5 CU). Acceptance: smooth monotone
   val-loss descent, no loss spikes > 0.3, resume-from-checkpoint verified
   mid-run, samples show babbling-but-English.
-- M5 Full run: 8B tokens with phase switch. Track FineWeb val loss (expect
-  roughly ~2.9-3.2 nats for this class — sanity range, not target) and QA
-  val loss (report its final value). Then greedy-decode the frozen set and
-  grade it: `python evals/run_gate.py --preds ...` — raw-pretrain gate
+- M5 Full run: 3B tokens with phase switch. Track FineWeb val loss (expect
+  roughly ~3.0-3.3 nats at this token count — sanity range, not target) and
+  QA val loss (report its final value). Preserve the pre-decay checkpoint
+  (85% mark) for the extension protocol. Then greedy-decode the frozen set
+  and grade it: `python evals/run_gate.py --preds ...` — raw-pretrain gate
   numbers are the baseline SFT has to beat.
 
 ## Explicitly OUT of scope (do not build): synthetic data generation, teacher
