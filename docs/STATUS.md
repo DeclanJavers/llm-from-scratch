@@ -105,6 +105,15 @@ Immediate build steps when resuming:
 4. Then: tokenize corpus → pretrain (3-phase: FineWeb-Edu 85% / task-anneal
    15% / SFT) → grade on frozen gate → wrap with validator + resampling.
 
+## Session coordination
+
+Two sessions are active on this branch. Whichever session takes model
+building owns `src/model.py`, `src/train.py`, and the tokenizer scripts
+(`src/train_tokenizer.py`, `src/tokenize_corpus.py`); the other should stick
+to the OPEN items above — the 8B row and validator probes touch a disjoint
+set of files (`src/gen_preds.py`, `src/v2_checks.py`, `results/`, `preds/`).
+Pull before starting work; push small and often.
+
 ## Environment notes
 
 - LM Studio runs on another Mac over LAN: `http://192.168.1.181:1233/v1`.
