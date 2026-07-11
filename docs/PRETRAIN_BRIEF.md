@@ -86,7 +86,10 @@ more FineWeb-Edu — no new sources):
 |                           |         | the 5-slice is too thin)        |
 | val (two sets)            | ~50M    | carved from FineWeb-Edu + QA    |
 
-- Sources (all free, via HuggingFace datasets, streaming download):
+- Sources (all free, via HuggingFace datasets; NQ/TriviaQA/HotpotQA come
+  via the MRQA 2019 distribution — pre-extractive, spans verified, a few
+  GB instead of the ~140GB raw NQ). Implementation: `model/prepare_data.py`
+  (Colab runbook: `model/COLAB.md`).
   1. FineWeb-Edu (sample-10BT config, ~10B tokens — covers the 8B extension).
   2. English Wikipedia (wikimedia/wikipedia, en) — need ~380M of ~4-5B.
   3. QA pool (~260-300M tokens rendered; ≤2 epochs total across both phases —
