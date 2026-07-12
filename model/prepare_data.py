@@ -422,11 +422,14 @@ def stage_qa(args):
     stats = defaultdict(lambda: defaultdict(int))
     audit, kept = [], 0
     rng = random.Random(0)
-    limit = 2000 if args.small else None
-    for i, (src, question, ctx, ans) in enumerate(iter_qa_rows()):
-        if limit and i >= limit * 6:
-            break
+    cap = 1500 if args.small else None    # per-source, so MRQA gets exercised
+    wanted = {"SQuADv2"} | MRQA_SUBSETS
+    for src, question, ctx, ans in iter_qa_rows():
         s = stats[src]
+        if cap and s["rows_in"] >= cap:
+            if all(stats[w]["rows_in"] >= cap for w in wanted):
+                break
+            continue
         s["rows_in"] += 1
         if contaminated(question, exact, grams):
             s["drop_contaminated"] += 1
@@ -498,7 +501,8 @@ def stage_manifest(args):
 
 def stage_push(args):
     from huggingface_hub import HfApi
-    assert args.repo, "--repo <user>/tinylm-shards required for push"
+    assert args.repo and "YOUR_HF_USER" not in args.repo, \
+        "--repo needs your real HF username, e.g. --repo declan/tinylm-shards"
     api = HfApi()
     api.create_repo(args.repo, repo_type="dataset", private=True, exist_ok=True)
     api.upload_folder(folder_path=str(SHARDS), repo_id=args.repo,
@@ -574,7 +578,7 @@ def main():
                     help="1/100 budgets for an end-to-end smoke run")
     ap.add_argument("--force", action="store_true", help="ignore .done markers")
     args = ap.parse_args()
-    os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")
+    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
     DATA.mkdir(parents=True, exist_ok=True)
     stages = ORDER if args.stage == "all" else [args.stage]
     for s in stages:
