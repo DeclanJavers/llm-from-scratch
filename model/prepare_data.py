@@ -403,6 +403,8 @@ def iter_qa_rows():
         except Exception as e:                         # noqa: BLE001
             print(f"  ({rid} failed: {e})")
     assert ds is not None, "could not load MRQA from any known id"
+    print("  streaming MRQA (skips its unwanted subsets — quiet but alive)",
+          flush=True)
     for r in ds:
         if r["subset"] not in MRQA_SUBSETS:
             continue
@@ -424,7 +426,12 @@ def stage_qa(args):
     rng = random.Random(0)
     cap = 1500 if args.small else None    # per-source, so MRQA gets exercised
     wanted = {"SQuADv2"} | MRQA_SUBSETS
+    n_in = 0
     for src, question, ctx, ans in iter_qa_rows():
+        n_in += 1
+        if n_in % 25000 == 0:
+            prog = {k: v["rows_in"] for k, v in sorted(stats.items())}
+            print(f"  scanned {n_in:,} rows; per-source in: {prog}", flush=True)
         s = stats[src]
         if cap and s["rows_in"] >= cap:
             if all(stats[w]["rows_in"] >= cap for w in wanted):
@@ -446,7 +453,8 @@ def stage_qa(args):
             audit.append({"source": src, "question": question,
                           "context": ctx[:CTX_CHAR_CAP], "ans": ans})
         if kept % 50000 == 0:
-            print(f"  kept {kept:,} rows, {w_train.total/1e6:.0f}M train tokens")
+            print(f"  kept {kept:,} rows, {w_train.total/1e6:.0f}M train tokens",
+                  flush=True)
     metas = {"qa": w_train.close(), "val_qa": w_val.close()}
     REPORTS.mkdir(parents=True, exist_ok=True)
     rng.shuffle(audit)
