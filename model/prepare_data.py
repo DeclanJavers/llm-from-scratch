@@ -408,11 +408,27 @@ def iter_qa_rows():
     for r in ds:
         if r["subset"] not in MRQA_SUBSETS:
             continue
-        det = r["detected_answers"]["text"]
-        ans = det[0] if det else (r["answers"][0] if r["answers"] else None)
+        ans = mrqa_surface_answer(r)
         if ans is None:
             continue
         yield r["subset"], r["question"], clean_mrqa(r["context"]), ans
+
+
+def mrqa_surface_answer(r):
+    """The answer as it literally appears in the context. detected_answers.text
+    is a canonical alias whose casing often differs from the document (most of
+    TriviaQA) — use the detected char span to pull the exact surface form."""
+    det = r["detected_answers"]
+    try:
+        span = det["char_spans"][0]
+        surface = r["context"][span["start"][0]:span["end"][0] + 1]
+        if surface.strip():
+            return surface
+    except (KeyError, IndexError, TypeError):
+        pass
+    if det["text"]:
+        return det["text"][0]
+    return r["answers"][0] if r["answers"] else None
 
 
 def stage_qa(args):
@@ -603,3 +619,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # pyarrow/datasets background threads crash noisily during interpreter
+    # finalization on Colab; all work is flushed to disk by now, exit hard.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
