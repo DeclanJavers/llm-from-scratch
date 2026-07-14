@@ -82,3 +82,65 @@ Notes:
   stages skip themselves.
 - Natural Questions / TriviaQA / HotpotQA come via the MRQA 2019 distribution
   (pre-extractive, answers verified, a few GB) instead of the ~140GB raw NQ.
+
+---
+
+# Colab runbook — M2/M3/M4/M5 training (GPU session)
+
+Now use a **GPU runtime (A100)**. Fresh session each time is fine — code
+comes from GitHub, data from the HF repo.
+
+**Cell 1 — env (same as before, minus datasets/pyarrow)**
+
+```python
+!pip -q install -U tokenizers huggingface_hub hf_transfer
+import os
+from google.colab import userdata
+os.environ["HF_TOKEN"] = userdata.get("HF_TOKEN")
+!git clone https://github.com/DeclanJavers/llm-from-scratch.git
+%cd llm-from-scratch
+!git checkout claude/thoughts-on-this-ua0f3y
+```
+
+**Cell 2 — M2 evidence on the GPU (param count, init loss, overfit)**
+
+```python
+!python model/net.py
+!python -u model/train.py --synthetic --overfit 300 --out model/runs/m2
+```
+
+Pass = init loss 10.3972 and overfit loss < 0.1.
+
+**Cell 3 — M3 throughput probe (downloads shards, ~30 real steps)**
+
+```python
+!python -u model/train.py --data-repo declan41/tinylm-shards \
+    --max-steps 30 --out model/runs/m3probe --compile
+```
+
+Watch the MFU column: target ≥ 35% on A100 (≥ 30% floor). First few steps
+are slow (torch.compile warmup) — judge from steps 15+.
+
+**Cell 4 — M4 pilot: 100M tokens (~1h, ~190 steps)**
+
+```python
+!python -u model/train.py --data-repo declan41/tinylm-shards \
+    --total-tokens 100000000 --out model/runs/m4pilot --compile
+```
+
+Pass = smooth loss descent, no spikes > 0.3, and mid-run kill + re-run with
+`--resume auto` continues cleanly.
+
+**Cell 5 — M5 full run (3B tokens, ~2 sessions)**
+
+```python
+!python -u model/train.py --data-repo declan41/tinylm-shards \
+    --out model/runs/full3b --resume auto --compile
+```
+
+When a session dies: new session, Cell 1, re-run Cell 5 — `--resume auto`
+picks up the latest checkpoint. NOTE: checkpoints live on the session disk
+under model/runs/ — download or HF-upload the latest checkpoint before a
+session ends if you can (a lost session otherwise costs up to
+ckpt_every_steps=500 steps ≈ 45 GPU-min). Keep `ckpt_stable_end.pt`
+forever — the 8B extension protocol resumes from it.
